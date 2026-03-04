@@ -1,0 +1,155 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "React Native Sherpa-ONNX",
+  "projectDescription": "Offline speech processing SDK for React Native with STT, TTS, speaker diarization, VAD, and audio enhancement",
+  "theme": "palm",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4338ca",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/speech-to-text",
+              "features/streaming-stt",
+              "features/text-to-speech",
+              "features/streaming-tts",
+              "features/voice-activity-detection",
+              "features/speaker-diarization",
+              "features/speech-enhancement",
+              "features/source-separation"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/model-setup",
+              "guides/supported-models",
+              "guides/execution-providers",
+              "guides/hotwords",
+              "guides/download-manager",
+              "guides/migration"
+            ]
+          },
+          {
+            "group": "Platform Specific",
+            "pages": [
+              "platform/android",
+              "platform/ios",
+              "platform/play-asset-delivery"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/disable-ffmpeg",
+              "advanced/disable-libarchive",
+              "advanced/performance-optimization",
+              "advanced/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/initialization",
+              "api/model-detection",
+              "api/execution-providers"
+            ]
+          },
+          {
+            "group": "Speech-to-Text",
+            "pages": [
+              "api/stt/create-stt",
+              "api/stt/streaming-stt",
+              "api/stt/configuration",
+              "api/stt/types"
+            ]
+          },
+          {
+            "group": "Text-to-Speech",
+            "pages": [
+              "api/tts/create-tts",
+              "api/tts/streaming-tts",
+              "api/tts/configuration",
+              "api/tts/types"
+            ]
+          },
+          {
+            "group": "Audio Processing",
+            "pages": [
+              "api/vad",
+              "api/diarization",
+              "api/enhancement",
+              "api/separation"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utils/model-paths",
+              "api/utils/audio-helpers",
+              "api/utils/download-manager"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Offline speech-to-text with multiple model types (Whisper, Paraformer, Zipformer, etc.)",
+    "Real-time streaming speech recognition with partial results",
+    "Text-to-speech with multiple voices and languages",
+    "Streaming TTS for low-latency audio generation",
+    "Voice Activity Detection (VAD)",
+    "Speaker diarization for multi-speaker audio",
+    "Speech enhancement and noise reduction",
+    "Source separation for audio streams",
+    "Hardware acceleration support (NNAPI, XNNPACK, Core ML, QNN)",
+    "Model quantization support (int8) for smaller footprint",
+    "Play Asset Delivery (PAD) support for Android",
+    "Automatic model type detection",
+    "TypeScript support with full type definitions"
+  ],
+  "publicApiSurface": [
+    "createSTT()",
+    "createStreamingSTT()",
+    "detectSttModel()",
+    "createTTS()",
+    "createStreamingTTS()",
+    "detectTtsModel()",
+    "testSherpaInit()",
+    "getQnnSupport()",
+    "getNnapiSupport()",
+    "getXnnpackSupport()",
+    "getCoreMlSupport()",
+    "getAvailableProviders()",
+    "listAssetModels()",
+    "listModelsAtPath()",
+    "resolveModelPath()",
+    "assetModelPath()",
+    "fileModelPath()",
+    "autoModelPath()",
+    "getDefaultModelPath()",
+    "getPlayAssetDeliveryModelsPath()",
+    "saveAudioToFile()",
+    "saveAudioToContentUri()",
+    "shareAudioFile()"
+  ]
+}
