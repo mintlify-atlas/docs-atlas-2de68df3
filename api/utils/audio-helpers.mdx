@@ -1,9 +1,15 @@
 ---
 title: Audio Helper Functions
-description: Utilities for saving, sharing, and managing generated audio files
+description: Utilities for saving, sharing, converting, and managing audio files
 ---
 
-Helper functions for working with generated TTS audio. These utilities handle saving to files, Android Storage Access Framework (SAF), and sharing audio across apps.
+Helper functions for working with audio in React Native Sherpa-ONNX. These utilities handle TTS audio output, file conversion, Android Storage Access Framework (SAF), and sharing.
+
+<Note>
+**Import Paths:**
+- TTS audio helpers: `import { saveAudioToFile, shareAudioFile } from 'react-native-sherpa-onnx/tts'`
+- Audio conversion: `import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio'`
+</Note>
 
 ## File Operations
 
@@ -158,6 +164,64 @@ const sound = new Sound(cachePath, '', (error) => {
 
 ---
 
+### saveTextToContentUri()
+
+Save a text file via Android Storage Access Framework (SAF).
+
+```typescript
+function saveTextToContentUri(
+  text: string,
+  directoryUri: string,
+  filename: string,
+  mimeType?: string
+): Promise<string>
+```
+
+<ParamField path="text" type="string" required>
+  Text content to save
+</ParamField>
+
+<ParamField path="directoryUri" type="string" required>
+  SAF directory content URI
+</ParamField>
+
+<ParamField path="filename" type="string" required>
+  Filename for the text file (e.g., `"transcript.txt"`)
+</ParamField>
+
+<ParamField path="mimeType" type="string" default="'text/plain'">
+  MIME type of the text file
+</ParamField>
+
+<ResponseField name="uri" type="Promise<string>">
+  Content URI of the saved file
+</ResponseField>
+
+<Note>
+  This function is Android-only. Useful for saving transcripts or subtitles alongside audio files.
+</Note>
+
+**Example:**
+```typescript
+import { saveTextToContentUri } from 'react-native-sherpa-onnx/tts';
+import DocumentPicker from 'react-native-document-picker';
+
+// Let user pick a directory
+const result = await DocumentPicker.pickDirectory();
+if (!result) return;
+
+const transcript = "This is the transcript of the audio.";
+const uri = await saveTextToContentUri(
+  transcript,
+  result.uri,
+  'transcript.txt',
+  'text/plain'
+);
+console.log('Transcript saved to:', uri);
+```
+
+---
+
 ## Sharing
 
 ### shareAudioFile()
@@ -213,6 +277,111 @@ const contentUri = await saveAudioToContentUri(audio, directoryUri, 'share.wav')
 // Share content URI (Android only)
 await shareAudioFile(contentUri, 'audio/wav');
 ```
+
+---
+
+## Audio Conversion
+
+### convertAudioToFormat()
+
+Convert audio files between different formats (requires FFmpeg on Android).
+
+```typescript
+function convertAudioToFormat(
+  inputPath: string,
+  outputPath: string,
+  format: string,
+  outputSampleRateHz?: number
+): Promise<void>
+```
+
+<ParamField path="inputPath" type="string" required>
+  Absolute path to the input audio file
+</ParamField>
+
+<ParamField path="outputPath" type="string" required>
+  Absolute path for the output file
+</ParamField>
+
+<ParamField path="format" type="string" required>
+  Output format: `"mp3"`, `"flac"`, `"wav"`, etc.
+</ParamField>
+
+<ParamField path="outputSampleRateHz" type="number" default="44100">
+  Sample rate for output (MP3: 32000, 44100, or 48000; WAV: always 16000 mono for sherpa-onnx)
+</ParamField>
+
+<Warning>
+  This function requires FFmpeg prebuilts on Android. See [Disable FFmpeg](/advanced/disable-ffmpeg) if you need to reduce app size.
+</Warning>
+
+**Example:**
+```typescript
+import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const inputPath = `${DocumentDirectoryPath}/recording.m4a`;
+const outputPath = `${DocumentDirectoryPath}/recording.mp3`;
+
+await convertAudioToFormat(inputPath, outputPath, 'mp3', 44100);
+console.log('Converted to MP3');
+```
+
+---
+
+### convertAudioToWav16k()
+
+Convert any audio file to WAV format (16 kHz, mono, 16-bit PCM) suitable for STT.
+
+```typescript
+function convertAudioToWav16k(
+  inputPath: string,
+  outputPath: string
+): Promise<void>
+```
+
+<ParamField path="inputPath" type="string" required>
+  Absolute path to the input audio file (any format supported by FFmpeg)
+</ParamField>
+
+<ParamField path="outputPath" type="string" required>
+  Absolute path for the output WAV file
+</ParamField>
+
+<Warning>
+  This function requires FFmpeg prebuilts on Android.
+</Warning>
+
+<Tip>
+  Use this function to prepare audio files for speech-to-text. Sherpa-ONNX expects 16 kHz mono audio for optimal STT performance.
+</Tip>
+
+**Example:**
+```typescript
+import { convertAudioToWav16k } from 'react-native-sherpa-onnx/audio';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+// Convert various audio formats to STT-compatible WAV
+const inputPath = `${DocumentDirectoryPath}/recording.mp3`;
+const wavPath = `${DocumentDirectoryPath}/recording.wav`;
+
+await convertAudioToWav16k(inputPath, wavPath);
+
+// Now transcribe
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  modelType: 'whisper',
+});
+
+const result = await stt.transcribeFile(wavPath);
+console.log('Transcription:', result.text);
+```
+
+**Use Cases:**
+- Prepare audio for STT (convert MP3, M4A, FLAC → WAV 16kHz)
+- Normalize audio sample rates before transcription
+- Convert recorded audio to STT-compatible format
 
 ---
 
@@ -343,6 +512,6 @@ try {
 
 ## Related APIs
 
-- [TTS Engine API](/api/tts/engine) - Generate speech audio
-- [Streaming TTS API](/api/tts/streaming) - Real-time audio generation
+- [TTS Engine API](/api/tts/create-tts) - Generate speech audio
+- [Streaming TTS API](/api/tts/streaming-tts) - Real-time audio generation
 - [Model Paths](/api/utils/model-paths) - Model path management

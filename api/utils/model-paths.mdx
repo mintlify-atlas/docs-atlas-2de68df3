@@ -192,6 +192,47 @@ if (packPath) {
 
 ---
 
+### getAssetPackPath()
+
+Get the absolute path to a Play Asset Delivery asset pack (Android only).
+
+```typescript
+function getAssetPackPath(packName: string): Promise<string | null>
+```
+
+<ParamField path="packName" type="string" required>
+  Name of the asset pack module (defined in `build.gradle`)
+</ParamField>
+
+<ResponseField name="path" type="Promise<string | null>">
+  Absolute path to the asset pack directory, or `null` if not available (iOS or pack not installed)
+</ResponseField>
+
+<Note>
+  This function is an alias for `getPlayAssetDeliveryModelsPath()`. Both functions are identical.
+</Note>
+
+**Example:**
+```typescript
+import { getAssetPackPath } from 'react-native-sherpa-onnx';
+
+// Get path to the asset pack
+const packPath = await getAssetPackPath('sherpa_models');
+if (packPath) {
+  console.log('Asset pack installed at:', packPath);
+  // Use with fileModelPath
+  const modelPath = `${packPath}/whisper-tiny`;
+} else {
+  console.log('Asset pack not available (iOS or not installed)');
+}
+```
+
+**See Also:**
+- [Play Asset Delivery Guide](/platform/play-asset-delivery) - Complete PAD setup
+- [getPlayAssetDeliveryModelsPath()](#getplayassetdeliverymodelspath) - Alias function
+
+---
+
 ## Model Discovery
 
 ### listAssetModels()
