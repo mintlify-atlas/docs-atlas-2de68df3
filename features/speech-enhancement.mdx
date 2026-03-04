@@ -1,0 +1,320 @@
+---
+title: 'Speech Enhancement'
+description: 'Noise reduction and audio quality improvement (Coming in v0.5.0)'
+icon: 'wand-magic-sparkles'
+---
+
+<Note>
+  This feature is **coming in version 0.5.0** and is not yet available in the current release.
+</Note>
+
+## Overview
+
+Speech Enhancement will improve audio quality by removing noise, echo, and other artifacts. This preprocessing step significantly improves STT accuracy and audio clarity.
+
+## Planned Features
+
+<CardGroup cols={2}>
+  <Card title="Noise Reduction" icon="volume-off">
+    Remove background noise from recordings
+  </Card>
+  <Card title="Echo Cancellation" icon="microphone-slash">
+    Eliminate echo and reverb artifacts
+  </Card>
+  <Card title="Audio Normalization" icon="wave-square">
+    Normalize volume levels
+  </Card>
+  <Card title="Before/After Preview" icon="code-compare">
+    Compare original and enhanced audio
+  </Card>
+</CardGroup>
+
+## Expected API (Preview)
+
+While the API is not finalized, the expected interface will be:
+
+```typescript
+import { createEnhancement } from 'react-native-sherpa-onnx/enhancement';
+
+// Create enhancement engine
+const enhancer = await createEnhancement({
+  modelPath: { type: 'asset', path: 'models/rnnoise' },
+  noiseReductionLevel: 0.8,  // 0..1
+});
+
+// Enhance audio file
+const enhanced = await enhancer.processFile('/path/to/noisy.wav');
+
+// Save enhanced audio
+await saveAudioToFile(enhanced, '/path/to/clean.wav');
+
+// Cleanup
+await enhancer.destroy();
+```
+
+## Use Cases
+
+### 1. Pre-processing for STT
+
+Improve transcription accuracy by cleaning audio first:
+
+```typescript
+// Planned API
+const enhancer = await createEnhancement(config);
+const stt = await createSTT(sttConfig);
+
+const enhanced = await enhancer.processFile('/path/to/noisy.wav');
+const result = await stt.transcribeSamples(
+  enhanced.samples,
+  enhanced.sampleRate
+);
+
+console.log('Clean transcript:', result.text);
+
+await enhancer.destroy();
+await stt.destroy();
+```
+
+### 2. Podcast Cleanup
+
+Remove background noise from recordings:
+
+```typescript
+// Planned API
+const enhancer = await createEnhancement({
+  modelPath: { type: 'asset', path: 'models/rnnoise' },
+  noiseReductionLevel: 0.9,
+});
+
+const enhanced = await enhancer.processFile('/path/to/podcast.wav');
+await saveAudioToFile(enhanced, '/path/to/podcast-clean.wav');
+
+await enhancer.destroy();
+```
+
+### 3. Real-time Enhancement
+
+Enhance streaming audio:
+
+```typescript
+// Planned API
+const enhancer = await createEnhancement(config);
+
+const recorder = startRecording();
+
+recorder.on('chunk', async (samples) => {
+  const enhanced = await enhancer.processSamples(samples, 16000);
+  
+  // Forward to STT or playback
+  await sttStream.acceptWaveform(enhanced, 16000);
+});
+```
+
+### 4. Call Quality Improvement
+
+```typescript
+// Planned API
+const enhancer = await createEnhancement({
+  modelPath: { type: 'asset', path: 'models/rnnoise' },
+  enableEchoCancel: true,
+  enableNoiseReduction: true,
+});
+
+const enhanced = await enhancer.processFile('/path/to/call.wav');
+await saveAudioToFile(enhanced, '/path/to/call-enhanced.wav');
+```
+
+## Planned Configuration
+
+```typescript
+// Expected configuration options
+interface EnhancementConfig {
+  modelPath: ModelPathConfig;
+  
+  // Noise reduction
+  noiseReductionLevel?: number;   // 0 (off) to 1 (max), default 0.5
+  enableNoiseReduction?: boolean; // default true
+  
+  // Echo cancellation
+  enableEchoCancel?: boolean;     // default false
+  echoSuppressionLevel?: number;  // 0..1
+  
+  // Normalization
+  enableNormalization?: boolean;  // default false
+  targetLevel?: number;           // dB, e.g., -20
+  
+  // Advanced
+  frameSize?: number;             // Samples per frame
+  hopSize?: number;               // Overlap between frames
+}
+```
+
+## Expected Output
+
+```typescript
+interface EnhancedAudio {
+  samples: number[];       // Enhanced PCM samples
+  sampleRate: number;      // Sample rate
+  noiseLevelBefore?: number;  // Noise estimate before
+  noiseLevelAfter?: number;   // Noise estimate after
+}
+```
+
+## Enhancement Levels
+
+```typescript
+// Planned presets
+const presets = {
+  light: { noiseReductionLevel: 0.3 },
+  moderate: { noiseReductionLevel: 0.6 },
+  aggressive: { noiseReductionLevel: 0.9 },
+};
+
+const enhancer = await createEnhancement({
+  modelPath: { type: 'asset', path: 'models/rnnoise' },
+  ...presets.moderate,
+});
+```
+
+## Expected Models
+
+Likely model support:
+
+- **RNNoise** - Lightweight noise suppression
+- **DeepFilterNet** - Deep learning-based enhancement
+- **Speex** - Classic noise reduction
+- **Custom sherpa-onnx models** - Optimized for mobile
+
+## Timeline
+
+Enhancement support is planned for:
+
+<Steps>
+  <Step title="Version 0.5.0">
+    Initial enhancement with basic noise reduction
+  </Step>
+  <Step title="Future versions">
+    Advanced features like echo cancellation and real-time processing
+  </Step>
+</Steps>
+
+## Stay Updated
+
+To track progress or contribute:
+
+- Watch the [GitHub repository](https://github.com/XDcobra/react-native-sherpa-onnx)
+- Check the [changelog](https://github.com/XDcobra/react-native-sherpa-onnx/blob/main/CHANGELOG.md)
+- Join discussions in issues or PRs
+
+## Current Workarounds
+
+While enhancement is not available, you can:
+
+1. **External libraries** - Use JavaScript audio libraries (e.g., Web Audio API)
+2. **Pre-process offline** - Use desktop tools (Audacity, FFmpeg) before importing
+3. **Cloud services** - Use enhancement APIs from cloud providers
+
+### Simple Normalization Example
+
+```typescript
+function normalizeAudio(samples: number[]): number[] {
+  // Find peak
+  const peak = Math.max(...samples.map(Math.abs));
+  
+  if (peak === 0) return samples;
+  
+  // Normalize to 0.8 (-1.9 dB)
+  const targetPeak = 0.8;
+  const gain = targetPeak / peak;
+  
+  return samples.map(s => s * gain);
+}
+
+// Usage
+const samples = getPcmSamples();
+const normalized = normalizeAudio(samples);
+
+// Now use for STT
+const result = await stt.transcribeSamples(normalized, 16000);
+```
+
+### Simple High-pass Filter
+
+```typescript
+function highPassFilter(samples: number[], alpha: number = 0.95): number[] {
+  const filtered: number[] = [];
+  let prev = 0;
+  
+  for (let i = 0; i < samples.length; i++) {
+    const current = samples[i];
+    filtered[i] = alpha * (prev + current - (samples[i - 1] || 0));
+    prev = filtered[i];
+  }
+  
+  return filtered;
+}
+
+// Usage (removes low-frequency noise)
+const samples = getPcmSamples();
+const filtered = highPassFilter(samples);
+```
+
+## Integration with STT Pipeline
+
+When available, enhancement will integrate seamlessly:
+
+```typescript
+// Future combined API (preview)
+import { createEnhancement } from 'react-native-sherpa-onnx/enhancement';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const enhancer = await createEnhancement(enhancementConfig);
+const stt = await createSTT(sttConfig);
+
+// Process pipeline
+const enhanced = await enhancer.processFile('/path/to/noisy.wav');
+const transcript = await stt.transcribeSamples(
+  enhanced.samples,
+  enhanced.sampleRate
+);
+
+console.log('Transcript:', transcript.text);
+console.log('Noise reduction:', 
+  `${enhanced.noiseLevelBefore} -> ${enhanced.noiseLevelAfter} dB`
+);
+
+await enhancer.destroy();
+await stt.destroy();
+```
+
+## Comparison Tool
+
+Expected before/after comparison:
+
+```typescript
+// Planned API
+const enhancer = await createEnhancement(config);
+
+const result = await enhancer.processFile('/path/to/noisy.wav', {
+  returnOriginal: true,  // Include original for comparison
+});
+
+// Play original
+await playAudio(result.original.samples, result.original.sampleRate);
+
+// Play enhanced
+await playAudio(result.enhanced.samples, result.enhanced.sampleRate);
+
+console.log('SNR improvement:', result.snrImprovement, 'dB');
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Speech-to-Text" icon="microphone" href="/features/speech-to-text">
+    Transcribe enhanced audio
+  </Card>
+  <Card title="Source Separation" icon="sliders" href="/features/source-separation">
+    Separate voice from background (coming in v0.6.0)
+  </Card>
+</CardGroup>

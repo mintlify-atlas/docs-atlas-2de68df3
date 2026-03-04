@@ -1,0 +1,334 @@
+---
+title: "STT Types"
+description: "TypeScript types, interfaces, and enums for STT API"
+---
+
+## Type Definitions
+
+### STTModelType
+
+Supported offline STT model types. Must match native `ParseSttModelType()` implementation.
+
+```typescript
+type STTModelType =
+  | 'transducer'
+  | 'nemo_transducer'
+  | 'paraformer'
+  | 'nemo_ctc'
+  | 'wenet_ctc'
+  | 'sense_voice'
+  | 'zipformer_ctc'
+  | 'ctc'
+  | 'whisper'
+  | 'funasr_nano'
+  | 'fire_red_asr'
+  | 'moonshine'
+  | 'dolphin'
+  | 'canary'
+  | 'omnilingual'
+  | 'medasr'
+  | 'telespeech_ctc'
+  | 'auto';
+```
+
+**Constants:**
+
+```typescript
+const STT_MODEL_TYPES: readonly STTModelType[];
+```
+
+Runtime array of all supported model types.
+
+---
+
+### OnlineSTTModelType
+
+Supported streaming (online) STT model types. These use `OnlineRecognizer` + `OnlineStream` in sherpa-onnx.
+
+```typescript
+type OnlineSTTModelType =
+  | 'transducer'
+  | 'paraformer'
+  | 'zipformer2_ctc'
+  | 'nemo_ctc'
+  | 'tone_ctc';
+```
+
+**Constants:**
+
+```typescript
+const ONLINE_STT_MODEL_TYPES: readonly OnlineSTTModelType[];
+```
+
+---
+
+## Result Interfaces
+
+### SttRecognitionResult
+
+Full recognition result from offline STT. Maps to Kotlin `OfflineRecognizerResult`.
+
+```typescript
+interface SttRecognitionResult {
+  /** Transcribed text. */
+  text: string;
+  
+  /** Token strings. */
+  tokens: string[];
+  
+  /** Timestamps per token (model-dependent). */
+  timestamps: number[];
+  
+  /** Detected or specified language (model-dependent). */
+  lang: string;
+  
+  /** Emotion label (model-dependent, e.g. SenseVoice). */
+  emotion: string;
+  
+  /** Event label (model-dependent). */
+  event: string;
+  
+  /** Durations (valid for TDT models). */
+  durations: number[];
+}
+```
+
+**Example:**
+
+```typescript
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log(result.text);        // "Hello world"
+console.log(result.tokens);      // ["Hello", "world"]
+console.log(result.timestamps);  // [0.5, 1.2]
+console.log(result.lang);        // "en"
+```
+
+---
+
+### StreamingSttResult
+
+Partial or final recognition result from streaming STT. Maps to Kotlin `OnlineRecognizerResult`.
+
+```typescript
+interface StreamingSttResult {
+  /** Current recognized text (partial or final). */
+  text: string;
+  
+  /** Token strings. */
+  tokens: string[];
+  
+  /** Token timestamps. */
+  timestamps: number[];
+}
+```
+
+**Example:**
+
+```typescript
+const result = await stream.getResult();
+console.log(result.text);   // "How are you"
+console.log(result.tokens); // ["How", "are", "you"]
+```
+
+---
+
+### SttInitResult
+
+Result of `initializeSTT()` native call. Includes detection metadata.
+
+```typescript
+interface SttInitResult {
+  /** Whether initialization succeeded. */
+  success: boolean;
+  
+  /** Array of detected model types and directories. */
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  
+  /** Primary detected model type. */
+  modelType?: string;
+  
+  /** Auto-set decoding method (e.g. "greedy_search", "modified_beam_search"). */
+  decodingMethod?: string;
+}
+```
+
+---
+
+## Utility Functions
+
+### sttSupportsHotwords()
+
+Returns `true` only for model types that support hotwords (contextual biasing).
+
+```typescript
+function sttSupportsHotwords(modelType: STTModelType | string): boolean
+```
+
+**Supported types:** `'transducer'`, `'nemo_transducer'`
+
+**Example:**
+
+```typescript
+if (sttSupportsHotwords('transducer')) {
+  // Show hotwords UI options
+}
+```
+
+**Constants:**
+
+```typescript
+const STT_HOTWORDS_MODEL_TYPES: readonly STTModelType[] = [
+  'transducer',
+  'nemo_transducer'
+];
+```
+
+---
+
+## Language Support
+
+The SDK exports language code constants and helper functions for multilingual models:
+
+### Whisper Languages
+
+```typescript
+function getWhisperLanguages(): WhisperLanguage[]
+
+const WHISPER_LANGUAGES: readonly WhisperLanguage[];
+```
+
+**Example:**
+
+```typescript
+import { WHISPER_LANGUAGES } from 'react-native-sherpa-onnx';
+
+const languages = WHISPER_LANGUAGES;
+// [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }, ...]
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-base' },
+  modelType: 'whisper',
+  modelOptions: {
+    whisper: { language: 'de' }
+  }
+});
+```
+
+### SenseVoice Languages
+
+```typescript
+function getSenseVoiceLanguages(): SttModelLanguage[]
+
+const SENSEVOICE_LANGUAGES: readonly SttModelLanguage[];
+```
+
+### Canary Languages
+
+```typescript
+function getCanaryLanguages(): SttModelLanguage[]
+
+const CANARY_LANGUAGES: readonly SttModelLanguage[];
+```
+
+### FunASR Nano Languages
+
+```typescript
+function getFunasrNanoLanguages(): SttModelLanguage[]
+
+const FUNASR_NANO_LANGUAGES: readonly SttModelLanguage[];
+
+function getFunasrMltNanoLanguages(): SttModelLanguage[]
+
+const FUNASR_MLT_NANO_LANGUAGES: readonly SttModelLanguage[];
+```
+
+### SttModelLanguage
+
+```typescript
+interface SttModelLanguage {
+  code: string;
+  name: string;
+}
+```
+
+### WhisperLanguage
+
+```typescript
+interface WhisperLanguage {
+  code: string;
+  name: string;
+}
+```
+
+**Example:**
+
+```typescript
+import { 
+  WHISPER_LANGUAGES, 
+  SENSEVOICE_LANGUAGES,
+  CANARY_LANGUAGES 
+} from 'react-native-sherpa-onnx';
+
+const whisperLangs = WHISPER_LANGUAGES;
+// [{ code: 'en', name: 'English' }, ...]
+
+const senseVoiceLangs = SENSEVOICE_LANGUAGES;
+// [{ code: 'zh', name: 'Chinese' }, ...]
+
+const canaryLangs = CANARY_LANGUAGES;
+// [{ code: 'en', name: 'English' }, { code: 'de', name: 'German' }, ...]
+```
+
+---
+
+## Re-exported Types
+
+The following types are re-exported from the main STT module:
+
+```typescript
+export type {
+  // Offline STT
+  STTInitializeOptions,
+  STTModelType,
+  SttModelOptions,
+  SttRecognitionResult,
+  SttRuntimeConfig,
+  SttEngine,
+  SttInitResult,
+  
+  // Streaming STT
+  OnlineSTTModelType,
+  StreamingSttEngine,
+  StreamingSttInitOptions,
+  StreamingSttResult,
+  SttStream,
+  EndpointConfig,
+  EndpointRule,
+  
+  // Languages
+  SttModelLanguage,
+  WhisperLanguage,
+};
+
+export {
+  // Constants
+  STT_MODEL_TYPES,
+  STT_HOTWORDS_MODEL_TYPES,
+  ONLINE_STT_MODEL_TYPES,
+  
+  // Language constants
+  WHISPER_LANGUAGES,
+  SENSEVOICE_LANGUAGES,
+  CANARY_LANGUAGES,
+  FUNASR_NANO_LANGUAGES,
+  FUNASR_MLT_NANO_LANGUAGES,
+  
+  // Functions
+  sttSupportsHotwords,
+  getWhisperLanguages,
+  getSenseVoiceLanguages,
+  getCanaryLanguages,
+  getFunasrNanoLanguages,
+  getFunasrMltNanoLanguages,
+};
+```

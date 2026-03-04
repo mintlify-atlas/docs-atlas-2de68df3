@@ -1,0 +1,203 @@
+---
+title: Hotwords (Contextual Biasing)
+description: Boost recognition accuracy for specific words and phrases with hotwords support
+icon: bullseye
+---
+
+Hotwords (also known as contextual biasing) allow you to boost recognition accuracy for specific words or phrases. This is useful for domain-specific vocabulary, proper nouns, or technical terms.
+
+<Warning>
+**Model Type Requirement**
+
+Hotwords are **only** supported by **Transducer** and **NeMo Transducer** models (`transducer`, `nemo_transducer`). All other model types (Whisper, Paraformer, Sense Voice, etc.) do not support hotwords.
+</Warning>
+
+## Checking Hotword Support
+
+Use `sttSupportsHotwords(modelType)` to check if a model type supports hotwords:
+
+```typescript
+import { sttSupportsHotwords } from 'react-native-sherpa-onnx/stt';
+
+if (sttSupportsHotwords('transducer')) {
+  // Show hotword options in UI
+}
+```
+
+The function returns `true` only for `'transducer'` and `'nemo_transducer'`.
+
+## Error Codes
+
+| Code | When |
+|------|------|
+| `HOTWORDS_NOT_SUPPORTED` | `createSTT` is called with a non-empty `hotwordsFile` and the model type is not `transducer` or `nemo_transducer` |
+| `INVALID_HOTWORDS_FILE` | Hotwords file is missing, not readable, invalid UTF-8, contains null bytes, has no valid lines, or has invalid score format |
+
+## Automatic Decoding Method Switch
+
+When you provide a non-empty hotwords file, the SDK **automatically** sets the decoding method to `modified_beam_search` (and ensures `maxActivePaths` is at least 4), because sherpa-onnx only applies hotwords with that method.
+
+<Info>
+You do not need to set `decodingMethod` manually. The init result includes `decodingMethod` so you can confirm which method was applied.
+</Info>
+
+## Hotword File Format
+
+For transducer and nemo_transducer models:
+
+- **One word or phrase per line**
+- **UTF-8 text**; no null bytes
+- **Optional score per line:** `word_or_phrase :1.5` (space, colon, then a single number)
+- **Each non-empty line must contain at least one letter character** (lines with only digits, punctuation, or symbols are rejected)
+
+### Example Hotword File
+
+```text
+SHERPA ONNX :2.0
+REACT NATIVE :1.8
+TURBOMODULE :1.5
+qualcomm
+apple neural engine
+```
+
+<Note>
+The SDK validates the file when you pass a path: it must exist, be readable, and satisfy the rules above. Invalid files cause rejection with `INVALID_HOTWORDS_FILE`.
+</Note>
+
+## Modeling Unit and BPE Vocab
+
+Only relevant when using **hotwords**. Pass **`modelingUnit`** (and if needed **`bpeVocab`**) so hotwords are tokenized correctly.
+
+<ResponseField name="modelingUnit" type="string">
+  Set when using hotwords: `'cjkchar'` | `'bpe'` | `'cjkchar+bpe'`
+  
+  Must match the model's training unit. See the table below.
+</ResponseField>
+
+<ResponseField name="bpeVocab" type="string">
+  Only needed when `modelingUnit` is `'bpe'` or `'cjkchar+bpe'`
+  
+  Path to the BPE vocabulary file (sentencepiece **bpe.vocab**). For `'cjkchar'` you do *not* need `bpeVocab`.
+</ResponseField>
+
+<Info>
+If the model directory contains **`bpe.vocab`**, it is detected automatically and used when `bpeVocab` is not provided (for `bpe` / `cjkchar+bpe`).
+</Info>
+
+## When to Use Which Modeling Unit
+
+The value depends on how the **model was trained**, not on the app. You find it in the model's documentation (e.g. k2-fsa releases, Hugging Face card).
+
+<CardGroup cols={1}>
+  <Card title="BPE" icon="language">
+    **Use for:** English (or similar) transducer models
+    
+    **Examples:** "zipformer-en", "icefall ... en", LibriSpeech models
+    
+    **Files:** Model often has **bpe.model** or **bpe.vocab** in the folder
+    
+    **Hotwords file:** One word/phrase per line (e.g. `SPEECH RECOGNITION`)
+  </Card>
+
+  <Card title="CJKChar" icon="language">
+    **Use for:** Chinese character-based transducer models
+    
+    **Examples:** "conformer-zh", "wenetspeech", "multi-dataset zh" models
+    
+    **Files:** No BPE; tokens are characters
+    
+    **Hotwords file:** Chinese words per line (e.g. `语音识别`)
+  </Card>
+
+  <Card title="CJKChar+BPE" icon="language">
+    **Use for:** Bilingual Chinese + English transducer models
+    
+    **Examples:** "bilingual-zh-en", "streaming zipformer bilingual"
+    
+    **Files:** Model often has **bpe.vocab**
+    
+    **Hotwords file:** Can mix Chinese and English (e.g. `礼拜二`, `FOREVER`)
+  </Card>
+</CardGroup>
+
+<Tip>
+If you're unsure: check the model's repo or README for "modeling unit", "tokenizer", or "BPE". If the folder contains **bpe.vocab** (or bpe.model), the model is usually **bpe** or **cjkchar+bpe**.
+</Tip>
+
+## Usage Example
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+// Create hotwords file
+const hotwordsPath = `${DocumentDirectoryPath}/hotwords.txt`;
+await RNFS.writeFile(
+  hotwordsPath,
+  'SHERPA ONNX :2.0\nREACT NATIVE :1.8\nTURBOMODULE :1.5',
+  'utf8'
+);
+
+// Initialize STT with hotwords
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer-en' },
+  modelType: 'transducer',
+  hotwordsFile: hotwordsPath,
+  hotwordsScore: 1.5, // Optional: default boost score
+  modelingUnit: 'bpe',
+  // bpeVocab will be auto-detected if bpe.vocab exists in model folder
+});
+
+// The decoding method is automatically set to 'modified_beam_search'
+console.log(stt.config.decodingMethod); // 'modified_beam_search'
+
+// Transcribe with hotword boosting
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log(result.text);
+
+// Clean up
+await stt.destroy();
+```
+
+## Validation Rules
+
+The SDK validates the hotwords file when you initialize STT:
+
+<AccordionGroup>
+  <Accordion title="File must exist and be readable">
+    The path must point to an existing file that the app can read.
+  </Accordion>
+
+  <Accordion title="UTF-8 text with no null bytes">
+    The file must be valid UTF-8 text without null bytes.
+  </Accordion>
+
+  <Accordion title="At least one valid line">
+    The file must contain at least one non-empty line with letter characters.
+  </Accordion>
+
+  <Accordion title="Valid score format">
+    If a line includes a score (e.g. `word :1.5`), the part after ` :` must be a valid number.
+  </Accordion>
+
+  <Accordion title="No digit-only or symbol-only lines">
+    Each line must contain at least one letter character (lines with only digits, punctuation, or SRT timestamps are rejected).
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="STT API" icon="microphone" href="/api-reference/stt">
+    Complete Speech-to-Text API reference
+  </Card>
+  <Card title="Supported Models" icon="database" href="/guides/supported-models">
+    View all supported model types
+  </Card>
+  <Card title="Model Setup" icon="folder-open" href="/guides/model-setup">
+    Learn how to set up and manage models
+  </Card>
+  <Card title="Streaming STT" icon="waveform" href="/api-reference/stt-streaming">
+    Real-time speech recognition
+  </Card>
+</CardGroup>

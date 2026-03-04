@@ -1,0 +1,321 @@
+---
+title: Migration Guide
+description: Breaking changes and migration instructions for upgrading to version 0.3.0
+icon: arrow-right
+---
+
+<Warning>
+**Breaking Changes in 0.3.0**
+
+If you are upgrading from an earlier version to **0.3.0**, plan for the following migration steps. The SDK has been restructured with an instance-based API and improved type safety.
+</Warning>
+
+## Instance-Based API (TTS + STT)
+
+TTS and STT now use an instance-based factory pattern instead of module-level singletons. Each call to `createTTS()` / `createSTT()` returns an independent engine instance.
+
+<Warning>
+**Important:** You **must** call `.destroy()` when done to free native resources.
+</Warning>
+
+### Text-to-Speech (TTS)
+
+<CodeGroup>
+```typescript Before (0.2.x)
+import { initializeTTS, generateSpeech, unloadTTS } from 'react-native-sherpa-onnx/tts';
+
+await initializeTTS({ modelPath: { type: 'asset', path: 'models/vits' } });
+const audio = await generateSpeech('Hello');
+await unloadTTS();
+```
+
+```typescript After (0.3.0)
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({ modelPath: { type: 'asset', path: 'models/vits' } });
+const audio = await tts.generateSpeech('Hello');
+await tts.destroy();
+```
+</CodeGroup>
+
+### Speech-to-Text (STT)
+
+<CodeGroup>
+```typescript Before (0.2.x)
+import { initializeSTT, transcribeFile, unloadSTT } from 'react-native-sherpa-onnx/stt';
+
+await initializeSTT({ modelPath: { type: 'asset', path: 'models/whisper' } });
+const result = await transcribeFile('/audio.wav');
+await unloadSTT();
+```
+
+```typescript After (0.3.0)
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({ modelPath: { type: 'asset', path: 'models/whisper' } });
+const result = await stt.transcribeFile('/audio.wav');
+await stt.destroy();
+```
+</CodeGroup>
+
+## Speech-to-Text Changes
+
+### transcribeFile Return Type
+
+`transcribeFile` now returns a full `SttRecognitionResult` object instead of just a string.
+
+<CodeGroup>
+```typescript Before (0.2.x)
+const text: string = await transcribeFile(path);
+```
+
+```typescript After (0.3.0)
+const result: SttRecognitionResult = await stt.transcribeFile(path);
+const text = result.text;
+
+// Additional fields available:
+console.log(result.tokens);
+console.log(result.timestamps);
+console.log(result.lang);
+console.log(result.emotion);
+console.log(result.event);
+console.log(result.durations);
+```
+</CodeGroup>
+
+<Tip>
+For text only, use `(await stt.transcribeFile(path)).text`
+</Tip>
+
+### Hotwords Support
+
+`createSTT` now supports two additional optional options:
+
+- `hotwordsFile` (string): Path to hotwords file
+- `hotwordsScore` (number): Default boost score for hotwords
+
+See the [Hotwords Guide](/guides/hotwords) for details.
+
+### Native Method Renaming
+
+The native TurboModule methods were renamed:
+
+- `initializeSherpaOnnx` → `initializeStt`
+- `unloadSherpaOnnx` → `unloadStt`
+
+<Note>
+This only affects you if you're calling the TurboModule directly. Use the high-level API instead.
+</Note>
+
+### Removed Deprecated Type
+
+`TranscriptionResult` has been removed. Use `SttRecognitionResult` instead (same shape).
+
+## Text-to-Speech Changes
+
+### Model-Specific Options
+
+Init and update no longer use flat `noiseScale`, `noiseScaleW`, and `lengthScale` on the options object. Use **`modelOptions`** instead, with one block per model type.
+
+#### Initialization
+
+<CodeGroup>
+```typescript Before (0.2.x)
+await initializeTTS({
+  modelPath: { type: 'asset', path: 'models/vits' },
+  modelType: 'vits',
+  noiseScale: 0.667,
+  noiseScaleW: 0.8,
+  lengthScale: 1.0,
+});
+```
+
+```typescript After (0.3.0)
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      noiseScaleW: 0.8,
+      lengthScale: 1.0,
+    },
+  },
+});
+```
+</CodeGroup>
+
+#### Updating Parameters
+
+<CodeGroup>
+```typescript Before (0.2.x)
+await updateTtsParams({
+  noiseScale: 0.7,
+  lengthScale: 1.2,
+});
+```
+
+```typescript After (0.3.0)
+await tts.updateParams({
+  modelOptions: {
+    vits: {
+      noiseScale: 0.7,
+      lengthScale: 1.2,
+    },
+  },
+});
+
+// Or with explicit modelType:
+await tts.updateParams({
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.7,
+      lengthScale: 1.2,
+    },
+  },
+});
+```
+</CodeGroup>
+
+### Model Option Types
+
+New types exported from the TTS module:
+
+- `TtsModelOptions`
+- `TtsVitsModelOptions`
+- `TtsMatchaModelOptions`
+- `TtsKokoroModelOptions`
+- `TtsKittenModelOptions`
+- `TtsPocketModelOptions`
+
+See the [TTS API](/api-reference/tts) documentation for details.
+
+### Instance-Bound Methods
+
+<Warning>
+If you call the **TurboModule directly**, all instance-bound methods now take `instanceId` as the first parameter.
+</Warning>
+
+Example:
+
+```typescript
+// Direct TurboModule call (not recommended)
+const result = await RNSherpaOnnxTtsModule.generateSpeech(instanceId, text, options);
+
+// Use the high-level API instead
+const result = await tts.generateSpeech(text, options);
+```
+
+### Removed Deprecated Type
+
+`SynthesisOptions` has been removed. Use `TtsGenerationOptions` instead (same shape).
+
+## Migration Checklist
+
+<Steps>
+  <Step title="Update STT initialization">
+    Replace `initializeSTT` / `unloadSTT` with `createSTT` / `stt.destroy()`
+  </Step>
+
+  <Step title="Update TTS initialization">
+    Replace `initializeTTS` / `unloadTTS` with `createTTS` / `tts.destroy()`
+  </Step>
+
+  <Step title="Update transcribeFile usage">
+    Change `const text = await transcribeFile(path)` to `const result = await stt.transcribeFile(path); const text = result.text`
+  </Step>
+
+  <Step title="Update TTS model options">
+    Move flat `noiseScale`, `noiseScaleW`, `lengthScale` to nested `modelOptions.vits` (or appropriate model type)
+  </Step>
+
+  <Step title="Update method calls">
+    Change module-level function calls to instance methods:
+    - `generateSpeech(text)` → `tts.generateSpeech(text)`
+    - `transcribeFile(path)` → `stt.transcribeFile(path)`
+  </Step>
+
+  <Step title="Add destroy calls">
+    Ensure all `createSTT()` and `createTTS()` instances call `.destroy()` when done
+  </Step>
+
+  <Step title="Update type imports">
+    Replace `TranscriptionResult` with `SttRecognitionResult`
+    
+    Replace `SynthesisOptions` with `TtsGenerationOptions`
+  </Step>
+</Steps>
+
+## Example: Complete Migration
+
+<CodeGroup>
+```typescript Before (0.2.x)
+import { initializeSTT, transcribeFile, unloadSTT } from 'react-native-sherpa-onnx/stt';
+import { initializeTTS, generateSpeech, unloadTTS } from 'react-native-sherpa-onnx/tts';
+
+// STT
+await initializeSTT({
+  modelPath: { type: 'asset', path: 'models/whisper' },
+  modelType: 'whisper',
+});
+const text = await transcribeFile('/audio.wav');
+console.log(text);
+await unloadSTT();
+
+// TTS
+await initializeTTS({
+  modelPath: { type: 'asset', path: 'models/vits' },
+  modelType: 'vits',
+  noiseScale: 0.667,
+  lengthScale: 1.0,
+});
+const audio = await generateSpeech('Hello world');
+await unloadTTS();
+```
+
+```typescript After (0.3.0)
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+// STT
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper' },
+  modelType: 'whisper',
+});
+const result = await stt.transcribeFile('/audio.wav');
+console.log(result.text);
+await stt.destroy();
+
+// TTS
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      lengthScale: 1.0,
+    },
+  },
+});
+const audio = await tts.generateSpeech('Hello world');
+await tts.destroy();
+```
+</CodeGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="STT API" icon="microphone" href="/api-reference/stt">
+    Complete Speech-to-Text API reference
+  </Card>
+  <Card title="TTS API" icon="volume" href="/api-reference/tts">
+    Complete Text-to-Speech API reference
+  </Card>
+  <Card title="Model Setup" icon="folder-open" href="/guides/model-setup">
+    Learn how to set up and manage models
+  </Card>
+  <Card title="Hotwords" icon="bullseye" href="/guides/hotwords">
+    Contextual biasing for better accuracy
+  </Card>
+</CardGroup>

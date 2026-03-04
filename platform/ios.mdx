@@ -1,0 +1,306 @@
+---
+title: "iOS Setup"
+description: "iOS-specific setup, Pod installation, XCFramework download, and Core ML configuration for React Native Sherpa-ONNX"
+---
+
+## Overview
+
+The iOS setup for React Native Sherpa-ONNX uses **CocoaPods** and automatically downloads the sherpa-onnx XCFramework from GitHub Releases during `pod install`. No manual framework downloads or Xcode configuration are required.
+
+## Requirements
+
+- **iOS 13.0+**
+- **Xcode 14+**
+- **CocoaPods** or equivalent dependency manager
+- **Bundler** (recommended for consistent Ruby/Pod versions)
+
+## Installation
+
+### 1. Install the npm package
+
+```sh
+npm install react-native-sherpa-onnx
+```
+
+### 2. Install CocoaPods dependencies
+
+```sh
+cd ios
+bundle install           # Install Ruby dependencies (recommended)
+bundle exec pod install  # Install iOS dependencies
+```
+
+Or without Bundler:
+
+```sh
+cd ios
+pod install
+```
+
+### What happens during `pod install`
+
+The podspec automatically:
+1. **Downloads the sherpa-onnx XCFramework** (~80MB) from GitHub Releases
+2. **Downloads libarchive sources** for archive extraction support
+3. **Configures build settings** for device and simulator architectures
+4. **Sets up header search paths** for sherpa-onnx C++ API
+
+The XCFramework version is pinned in `third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG` and fetched from the [GitHub Releases](https://github.com/XDcobra/react-native-sherpa-onnx/releases?q=framework).
+
+## Architecture and Framework Structure
+
+### XCFramework Layout
+
+The sherpa-onnx XCFramework includes static libraries for both device and simulator:
+
+```
+ios/Frameworks/sherpa_onnx.xcframework/
+├── ios-arm64/                          # Device (iPhone/iPad)
+│   ├── libsherpa-onnx.a                # Static library
+│   └── Headers/
+│       └── sherpa-onnx/c-api/
+│           ├── c-api.h
+│           └── cxx-api.h               # C++ API
+└── ios-arm64_x86_64-simulator/         # Simulator (M1 + Intel)
+    ├── libsherpa-onnx.a
+    └── Headers/
+        └── sherpa-onnx/c-api/
+            ├── c-api.h
+            └── cxx-api.h
+```
+
+### Supported Architectures
+
+- **Device:** `arm64` (iPhone 5S and later, all iPads with A7+)
+- **Simulator:** `arm64` (Apple Silicon Macs) and `x86_64` (Intel Macs)
+
+### Frameworks and Libraries
+
+The Pod links the following iOS frameworks:
+- **Foundation** - Core system services
+- **Accelerate** - Optimized math and DSP operations
+- **CoreML** - Apple Neural Engine and on-device ML
+
+Standard libraries:
+- **libc++** - C++ standard library
+- **libz** - Compression (used by libarchive)
+
+## libarchive Integration
+
+The iOS module compiles **libarchive** from source to support `.tar.bz2` extraction (for model downloads). During `pod install`:
+
+1. **Download:** `ios/scripts/setup-ios-libarchive.sh` downloads libarchive sources from GitHub Releases
+2. **Patch:** `ios/scripts/patch-libarchive-includes.sh` adds required headers (`stdio.h`, `unistd.h`) to `.c` files
+3. **Compile:** CocoaPods compiles the patched sources as part of the Pod build
+
+The libarchive version is pinned in `third_party/libarchive_prebuilt/IOS_RELEASE_TAG`.
+
+<Note>
+  libarchive is compiled from source because the prebuilt XCFramework approach doesn't work reliably across all Xcode/SDK versions. Source compilation ensures compatibility.
+</Note>
+
+## Execution Provider: Core ML
+
+iOS supports hardware acceleration via **Core ML**, which uses the Apple Neural Engine (ANE) when available.
+
+### Checking Core ML Support
+
+```typescript
+import { getCoreMlSupport } from 'react-native-sherpa-onnx';
+import { initializeTTS } from 'react-native-sherpa-onnx/tts';
+
+const coreml = await getCoreMlSupport();
+console.log('Core ML compiled:', coreml.providerCompiled);  // Always true on iOS
+console.log('Has Neural Engine:', coreml.hasAccelerator);   // true on A12+ devices (iOS 15+)
+
+if (coreml.hasAccelerator) {
+  await initializeTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper' },
+    modelType: 'auto',
+    provider: 'coreml',
+  });
+}
+```
+
+**Support fields:**
+- `providerCompiled`: Always `true` (Core ML is available on iOS 11+)
+- `hasAccelerator`: `true` if the device has an Apple Neural Engine (A12 Bionic and later, requires iOS 15+)
+- `canInit`: Not currently implemented (returns `false`)
+
+### Apple Neural Engine (ANE) Availability
+
+The Apple Neural Engine is available on:
+- **iPhone:** XS/XS Max/XR and later (A12 Bionic+)
+- **iPad:** iPad Air (3rd gen) and later, iPad mini (5th gen) and later, iPad Pro 2018 and later
+- **Mac:** All Apple Silicon Macs (M1/M2/M3 series)
+
+On older devices, Core ML uses CPU/GPU instead.
+
+## Build Configuration
+
+The Pod configures build settings automatically via `SherpaOnnx.podspec`:
+
+### Header Search Paths
+
+Added automatically:
+- `ios/` - iOS Objective-C++/Swift source
+- `ios/archive/` - Archive helper headers
+- `ios/model_detect/` - Model detection headers
+- `ios/stt/`, `ios/tts/`, `ios/online_stt/` - Feature-specific headers
+- XCFramework Headers (device + simulator slices)
+- libarchive headers (downloaded sources)
+
+### Library Search Paths
+
+Configured per SDK:
+- **Device builds** (`iphoneos*`): Links to `ios-arm64/libsherpa-onnx.a`
+- **Simulator builds** (`iphonesimulator*`): Links to `ios-arm64_x86_64-simulator/libsherpa-onnx.a`
+
+### Compiler Settings
+
+- **C++ Standard:** C++17 (`CLANG_CXX_LANGUAGE_STANDARD`)
+- **C++ Library:** libc++ (`CLANG_CXX_LIBRARY`)
+- **Force Load:** `-lsherpa-onnx` (ensures all symbols are included)
+
+### Preprocessor Definitions
+
+For libarchive compatibility:
+```c
+PLATFORM_CONFIG_H="libarchive_darwin_config.h"
+```
+
+## Advanced: Building the Framework Yourself
+
+If you need a custom sherpa-onnx build (e.g., different version or patches), you can build the XCFramework locally:
+
+### Using the CI Workflow
+
+The repository includes a GitHub Actions workflow that builds the XCFramework:
+
+`.github/workflows/build-sherpa-onnx-ios-framework.yml`
+
+This workflow:
+1. Builds sherpa-onnx for iOS (device + simulator)
+2. Merges the C++ API static library (`libsherpa-onnx-cxx-api.a`)
+3. Creates an XCFramework with headers
+4. Publishes to GitHub Releases
+
+You can run the workflow steps locally or inspect it for the exact build commands.
+
+### Manual Build Steps
+
+1. **Build sherpa-onnx for iOS:**
+   - Use upstream `build-ios.sh` from [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
+   - Or adapt the CI workflow's build script
+
+2. **Merge C++ API:**
+   - The XCFramework **must** include the C++ API (`libsherpa-onnx-cxx-api.a`)
+   - The iOS Objective-C++ code uses `sherpa_onnx::cxx::*` namespaces
+
+3. **Place the XCFramework:**
+   ```sh
+   # Copy your built framework to:
+   ios/Frameworks/sherpa_onnx.xcframework/
+   ```
+
+4. **Run pod install:**
+   ```sh
+   cd ios
+   pod install
+   ```
+
+The podspec will skip the download if `ios/Frameworks/sherpa_onnx.xcframework/` already exists and is valid.
+
+### Version Pinning
+
+The iOS framework version is pinned in:
+```
+third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG
+```
+
+Format: `framework-vX.Y.Z` (e.g., `framework-v1.12.24`)
+
+<Warning>
+  Do **not** use `ANDROID_RELEASE_TAG` for iOS. The iOS framework has a separate release tag and versioning.
+</Warning>
+
+## Troubleshooting
+
+### Framework download failed
+
+If `pod install` fails with framework download errors:
+
+1. **Check network connectivity:**
+   - The script downloads from GitHub Releases
+   - Corporate firewalls may block `api.github.com`
+
+2. **Use a GitHub token (for rate limits):**
+   ```sh
+   export GITHUB_TOKEN=your_token_here
+   pod install
+   ```
+
+3. **Force re-download:**
+   ```sh
+   rm -rf ios/Frameworks/sherpa_onnx.xcframework
+   pod install
+   ```
+
+### Framework headers not found
+
+If Xcode can't find `sherpa-onnx/c-api/cxx-api.h`:
+
+1. **Verify XCFramework structure:**
+   ```sh
+   ls ios/Frameworks/sherpa_onnx.xcframework/ios-arm64_x86_64-simulator/Headers/sherpa-onnx/c-api/
+   ```
+   Should contain `c-api.h` and `cxx-api.h`
+
+2. **Clean and rebuild:**
+   ```sh
+   cd ios
+   rm -rf Pods/ Podfile.lock
+   pod install
+   ```
+
+### libarchive compilation failed
+
+If you see errors about missing libarchive sources:
+
+1. **Run the download script manually:**
+   ```sh
+   bash ios/scripts/setup-ios-libarchive.sh
+   ```
+
+2. **Check the downloaded sources:**
+   ```sh
+   ls ios/Downloads/libarchive/
+   ```
+   Should contain `archive.h`, `archive_xxhash.h`, and `*.c` files
+
+3. **Check for patching errors:**
+   ```sh
+   bash ios/scripts/patch-libarchive-includes.sh ios/Downloads/libarchive
+   ls ios/patched_libarchive/
+   ```
+
+### Simulator vs. Device architecture mismatch
+
+If you see architecture errors when switching between simulator and device:
+
+1. **Clean build folder:**
+   - In Xcode: Product → Clean Build Folder (⇧⌘K)
+
+2. **Verify XCFramework has both slices:**
+   ```sh
+   ls ios/Frameworks/sherpa_onnx.xcframework/
+   ```
+   Should show:
+   - `ios-arm64/` (device)
+   - `ios-arm64_x86_64-simulator/` (simulator)
+
+## Related Documentation
+
+- [Execution Providers](/configuration/execution-providers) - Detailed Core ML documentation
+- [Model Setup](/models/setup) - Asset bundling for iOS
+- [Building sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - Upstream build instructions

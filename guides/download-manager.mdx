@@ -1,0 +1,363 @@
+---
+title: Model Download Manager
+description: Download and manage models in-app with progress tracking, checksums, and caching
+icon: download
+---
+
+The download manager fetches model assets from official sherpa-onnx GitHub Releases, caches them locally, verifies checksums when available, and exposes progress events.
+
+## Overview
+
+The download manager provides:
+
+- **Model registry** from sherpa-onnx GitHub Releases
+- **Progress tracking** with speed and ETA
+- **Checksum verification** for integrity
+- **Local caching** to avoid re-downloads
+- **Archive extraction** for `.tar.bz2` models
+- **Single-file models** for `.onnx` files
+
+## Quick Start
+
+Typical flow: refresh the registry, download a model, then initialize STT/TTS with the local path.
+
+```typescript
+import {
+  ModelCategory,
+  refreshModelsByCategory,
+  downloadModelByCategory,
+  getLocalModelPathByCategory,
+} from 'react-native-sherpa-onnx/download';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+// 1. Refresh the model registry
+await refreshModelsByCategory(ModelCategory.Tts, { forceRefresh: true });
+
+// 2. Download a model
+await downloadModelByCategory(ModelCategory.Tts, 'vits-piper-en_US-lessac-medium');
+
+// 3. Get the local path
+const localPath = await getLocalModelPathByCategory(
+  ModelCategory.Tts,
+  'vits-piper-en_US-lessac-medium'
+);
+
+// 4. Initialize TTS with the downloaded model
+if (localPath) {
+  const tts = await createTTS({
+    modelPath: { type: 'file', path: localPath },
+    modelType: 'auto',
+  });
+}
+```
+
+## Model Categories
+
+```typescript
+enum ModelCategory {
+  Stt = 'stt',
+  Tts = 'tts',
+}
+```
+
+## API Reference
+
+### refreshModelsByCategory
+
+Fetch and cache the latest model list from GitHub Releases. Use this before showing the available models UI.
+
+```typescript
+await refreshModelsByCategory(ModelCategory.Stt, { forceRefresh: true });
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+- `options?` (object):
+  - `forceRefresh?` (boolean): Force refresh even if cache exists
+
+**Returns:** `Promise<void>`
+
+### listModelsByCategory
+
+Return the cached model list. If no cache exists yet, this returns an empty array.
+
+```typescript
+const models = await listModelsByCategory(ModelCategory.Stt);
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+
+**Returns:** `Promise<ModelInfo[]>`
+
+### downloadModelByCategory
+
+Download a model by id. Supports progress callbacks, cancellation, and retries.
+
+```typescript
+await downloadModelByCategory(ModelCategory.Stt, 'sherpa-onnx-whisper-tiny', {
+  onProgress: (progress) => {
+    console.log(progress.percent, progress.speed, progress.eta);
+  },
+});
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+- `id` (string): Model identifier
+- `options?` (object):
+  - `onProgress?` (function): Progress callback `(progress: DownloadProgress) => void`
+  - `signal?` (AbortSignal): For cancellation
+
+**Returns:** `Promise<void>`
+
+**Progress object:**
+```typescript
+type DownloadProgress = {
+  percent: number;    // 0-100
+  speed?: string;     // e.g. "1.2 MB/s"
+  eta?: string;       // e.g. "5s"
+  bytesWritten: number;
+  contentLength: number;
+};
+```
+
+### getLocalModelPathByCategory
+
+Get the local path of a downloaded model for initialization.
+
+```typescript
+const localPath = await getLocalModelPathByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny'
+);
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+- `id` (string): Model identifier
+
+**Returns:** `Promise<string | null>` — Local path or null if not downloaded
+
+### listDownloadedModelsByCategory
+
+Return only models that are already downloaded on this device.
+
+```typescript
+const downloaded = await listDownloadedModelsByCategory(ModelCategory.Tts);
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+
+**Returns:** `Promise<ModelInfo[]>`
+
+### isModelDownloadedByCategory
+
+Check whether a model is downloaded.
+
+```typescript
+const isDownloaded = await isModelDownloadedByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny'
+);
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+- `id` (string): Model identifier
+
+**Returns:** `Promise<boolean>`
+
+### getModelsCacheStatusByCategory
+
+Return the last update timestamp for the cached registry.
+
+```typescript
+const status = await getModelsCacheStatusByCategory(ModelCategory.Tts);
+console.log(status.lastUpdated); // ISO timestamp or null
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+
+**Returns:** `Promise<{ lastUpdated: string | null }>`
+
+### getModelByIdByCategory
+
+Return metadata for a specific model id.
+
+```typescript
+const model = await getModelByIdByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny'
+);
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+- `id` (string): Model identifier
+
+**Returns:** `Promise<ModelInfo | null>`
+
+### deleteModelByCategory
+
+Remove a downloaded model and its cached files.
+
+```typescript
+await deleteModelByCategory(ModelCategory.Tts, 'vits-piper-en_US-lessac-medium');
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+- `id` (string): Model identifier
+
+**Returns:** `Promise<void>`
+
+### clearModelCacheByCategory
+
+Clear the cached registry for a category.
+
+```typescript
+await clearModelCacheByCategory(ModelCategory.Stt);
+```
+
+**Parameters:**
+- `category` (ModelCategory): STT or TTS
+
+**Returns:** `Promise<void>`
+
+## Progress Events
+
+### subscribeDownloadProgress
+
+Subscribe to download progress updates. Returns an unsubscribe function.
+
+```typescript
+import { subscribeDownloadProgress } from 'react-native-sherpa-onnx/download';
+
+const unsubscribe = subscribeDownloadProgress((category, modelId, progress) => {
+  console.log(category, modelId, progress.percent, progress.speed, progress.eta);
+});
+
+// Call unsubscribe() when you no longer need updates
+unsubscribe();
+```
+
+**Callback signature:**
+```typescript
+(category: ModelCategory, modelId: string, progress: DownloadProgress) => void
+```
+
+### subscribeModelsListUpdated
+
+Subscribe to model list refresh events. Returns an unsubscribe function.
+
+```typescript
+import { subscribeModelsListUpdated } from 'react-native-sherpa-onnx/download';
+
+const unsubscribe = subscribeModelsListUpdated((category) => {
+  console.log('Model list updated for', category);
+});
+
+// Call unsubscribe() when you no longer need updates
+unsubscribe();
+```
+
+**Callback signature:**
+```typescript
+(category: ModelCategory) => void
+```
+
+## Checksums
+
+The download manager validates checksums when available:
+
+- **Archives:** Validation uses native hashing during extraction
+- **Single-file models (`.onnx`):** Validation uses local SHA-256 calculation
+- **Fallback:** When `checksum.txt` does not list a file, the GitHub asset digest is used if provided
+
+<Info>
+Checksum validation ensures model integrity and prevents corrupted downloads.
+</Info>
+
+## Complete Example
+
+```typescript
+import {
+  ModelCategory,
+  refreshModelsByCategory,
+  listModelsByCategory,
+  downloadModelByCategory,
+  getLocalModelPathByCategory,
+  isModelDownloadedByCategory,
+  deleteModelByCategory,
+  subscribeDownloadProgress,
+} from 'react-native-sherpa-onnx/download';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+// Subscribe to progress
+const unsubscribe = subscribeDownloadProgress((category, modelId, progress) => {
+  console.log(`${modelId}: ${progress.percent}% - ${progress.speed} - ETA: ${progress.eta}`);
+});
+
+// Refresh registry
+await refreshModelsByCategory(ModelCategory.Stt, { forceRefresh: true });
+
+// List available models
+const models = await listModelsByCategory(ModelCategory.Stt);
+console.log('Available models:', models.map(m => m.id));
+
+// Check if model is downloaded
+const modelId = 'sherpa-onnx-whisper-tiny';
+const isDownloaded = await isModelDownloadedByCategory(ModelCategory.Stt, modelId);
+
+if (!isDownloaded) {
+  // Download with progress callback
+  await downloadModelByCategory(ModelCategory.Stt, modelId, {
+    onProgress: (progress) => {
+      console.log(`Download: ${progress.percent}%`);
+    },
+  });
+}
+
+// Get local path
+const localPath = await getLocalModelPathByCategory(ModelCategory.Stt, modelId);
+
+if (localPath) {
+  // Initialize STT
+  const stt = await createSTT({
+    modelPath: { type: 'file', path: localPath },
+    modelType: 'auto',
+  });
+
+  // Use STT
+  const result = await stt.transcribeFile('/path/to/audio.wav');
+  console.log(result.text);
+
+  await stt.destroy();
+}
+
+// Clean up subscription
+unsubscribe();
+
+// Delete model if needed
+await deleteModelByCategory(ModelCategory.Stt, modelId);
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Model Setup" icon="folder-open" href="/guides/model-setup">
+    Learn about bundled assets and file paths
+  </Card>
+  <Card title="Supported Models" icon="database" href="/guides/supported-models">
+    View all supported model types
+  </Card>
+  <Card title="STT API" icon="microphone" href="/api-reference/stt">
+    Speech-to-Text API reference
+  </Card>
+  <Card title="TTS API" icon="volume" href="/api-reference/tts">
+    Text-to-Speech API reference
+  </Card>
+</CardGroup>

@@ -1,0 +1,299 @@
+---
+title: Model Setup
+description: Learn how to set up and manage STT/TTS models with bundled assets, Play Asset Delivery, and filesystem paths
+icon: folder-open
+---
+
+This guide explains how to set up and discover STT/TTS models with `react-native-sherpa-onnx`, and when to use which API for listing and selecting models.
+
+<Info>
+**Auto-detection:** The library detects model types from the **files present** in each model directory. Folder and file names do not need to follow any fixed convention.
+</Info>
+
+For supported model types and file requirements per type, see the [Supported Models](/guides/supported-models) page.
+
+## Bundled Assets
+
+Models are shipped inside your app bundle (APK/IPA) under a dedicated assets path.
+
+### Example File Structure
+
+<CodeGroup>
+```text Android
+# Android: app/src/main/assets/
+assets/
+  models/
+    sherpa-onnx-whisper-tiny-en/
+      encoder.onnx
+      decoder.onnx
+      tokens.txt
+    vits-piper-en_US-lessac-low/
+      model.onnx
+      tokens.txt
+```
+
+```text iOS
+# iOS: add folder as "folder reference" (blue) in Xcode
+# e.g. under a "models" group
+# Resulting asset path:
+#   models/sherpa-onnx-whisper-tiny-en
+#   models/vits-piper-en_US-lessac-low
+```
+</CodeGroup>
+
+### Typical Code Flow
+
+1. **List** model folders in assets with `listAssetModels()`
+2. **Resolve** the chosen folder to an absolute path with `resolveModelPath()`
+3. **Initialize** STT or TTS with that path (and `modelType: 'auto'` to rely on auto-detection)
+
+```typescript
+import {
+  listAssetModels,
+  resolveModelPath,
+} from 'react-native-sherpa-onnx';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+// 1) List bundled model folders (each entry has folder + hint: 'stt' | 'tts' | 'unknown')
+const models = await listAssetModels();
+const sttFolders = models.filter((m) => m.hint === 'stt').map((m) => m.folder);
+const ttsFolders = models.filter((m) => m.hint === 'tts').map((m) => m.folder);
+
+// 2) User picks a folder, e.g. 'sherpa-onnx-whisper-tiny-en'
+const assetPath = `models/${selectedFolder}`;
+const absolutePath = await resolveModelPath({ type: 'asset', path: assetPath });
+
+// 3) Initialize (auto-detect type from files in that folder)
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: assetPath },
+  modelType: 'auto',
+});
+
+// or for TTS:
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: assetPath },
+  modelType: 'auto',
+});
+```
+
+<Note>
+Use this when models are **bundled in the app** (main app assets on Android, or folder references in the Xcode project on iOS).
+</Note>
+
+## Play Asset Delivery (PAD)
+
+On Android, large models can live in a **separate asset pack** (e.g. `sherpa_models`) so the base APK stays small. The pack is installed with the app; at runtime you get its path and list/load models from there.
+
+### Example File Structure
+
+```text
+# Asset pack module: e.g. android/sherpa_models/
+sherpa_models/
+  src/main/assets/
+    models/
+      sherpa-onnx-whisper-tiny-en/
+        encoder.onnx
+        decoder.onnx
+        tokens.txt
+      vits-piper-en_US-lessac-low/
+        model.onnx
+        tokens.txt
+```
+
+The app references the pack via `assetPacks = [":sherpa_models"]` and gets the unpacked path with `getAssetPackPath("sherpa_models")`.
+
+### Typical Code Flow
+
+1. **Get** the PAD models directory with `getAssetPackPath("sherpa_models")`
+2. **List** model folders under that path with `listModelsAtPath(padPath)`
+3. **Build** the full path for the chosen folder and use `{ type: 'file', path }`
+4. **Initialize** STT/TTS with that path
+
+```typescript
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+import {
+  getAssetPackPath,
+  listModelsAtPath,
+} from 'react-native-sherpa-onnx';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const PAD_PACK = 'sherpa_models';
+
+// 1) PAD path (null if app wasn't installed with the asset pack)
+const padPath = await getAssetPackPath(PAD_PACK);
+const basePath = padPath ?? `${DocumentDirectoryPath}/models`;
+
+// 2) List model folders under that path (hint: 'stt' | 'tts' | 'unknown')
+const models = await listModelsAtPath(basePath);
+const ttsModels = models.filter((m) => m.hint === 'tts').map((m) => m.folder);
+
+// 3) User picks a folder, e.g. 'vits-piper-en_US-lessac-low'
+const fullPath = `${basePath.replace(/\/+$/, '')}/${selectedFolder}`;
+
+// 4) Initialize with file path
+const tts = await createTTS({
+  modelPath: { type: 'file', path: fullPath },
+  modelType: 'auto',
+});
+```
+
+<Warning>
+Use **`listModelsAtPath(path)`** whenever models are **not** in the main app assets: PAD unpack directory, `DocumentDirectoryPath`, or any other filesystem path. Use **`listAssetModels()`** only for models bundled in the main app assets.
+</Warning>
+
+## Public API for Model Discovery
+
+<ResponseField name="listAssetModels()" type="function">
+  Returns model folders under the platform asset `models` directory. Each item has `folder` and `hint` (`'stt' | 'tts' | 'unknown'`).
+  
+  **When to use:** Models are bundled in the app (main assets).
+</ResponseField>
+
+<ResponseField name="listModelsAtPath(path, recursive?)" type="function">
+  Lists model folders under the given path. Set `recursive: true` to scan subdirectories.
+  
+  **When to use:** Models are on the filesystem: PAD unpack path, `DocumentDirectoryPath`, or custom dir.
+</ResponseField>
+
+<ResponseField name="getAssetPackPath(packName)" type="function">
+  Returns the path to the asset pack's content (Android PAD only), or `null` if the pack isn't available.
+  
+  **When to use:** Android PAD only. On iOS returns `null`.
+</ResponseField>
+
+<ResponseField name="resolveModelPath(config)" type="function">
+  Converts `{ type: 'asset', path }` or `{ type: 'file', path }` to the absolute path used by native code.
+  
+  **When to use:** Before initializing STT/TTS when you need the resolved path, or pass the config directly to init functions.
+</ResponseField>
+
+<ResponseField name="assetModelPath(assetPath)" type="function">
+  Returns `{ type: 'asset', path: assetPath }`. Use with paths like `models/sherpa-onnx-whisper-tiny-en`.
+  
+  **When to use:** Building config for bundled models.
+</ResponseField>
+
+<ResponseField name="fileModelPath(filePath)" type="function">
+  Returns `{ type: 'file', path: filePath }`. Use with an absolute path to a model folder.
+  
+  **When to use:** Building config for filesystem models (PAD, downloads).
+</ResponseField>
+
+<ResponseField name="autoModelPath(path)" type="function">
+  Returns `{ type: 'auto', path }`. Resolution tries asset first, then file system.
+  
+  **When to use:** Let the SDK try asset then file.
+</ResponseField>
+
+## Model Type Detection Without Initialization
+
+You can query the **model type** for a given path **without** loading the model. This is useful to show model-specific options in the UI before initialization.
+
+### STT Model Detection
+
+```typescript
+import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+const result = await detectSttModel(
+  { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  { preferInt8: true, modelType: 'auto' }
+);
+
+if (result.success && result.modelType === 'whisper') {
+  // Show Whisper-specific options (language, task, etc.)
+}
+```
+
+**Returns:** `{ success, detectedModels: [{ type, modelDir }], modelType? }`
+
+### TTS Model Detection
+
+```typescript
+import { detectTtsModel } from 'react-native-sherpa-onnx/tts';
+
+const result = await detectTtsModel(
+  { type: 'asset', path: 'models/vits-piper-en_US-lessac-low' },
+  { modelType: 'auto' }
+);
+
+if (result.success && (result.modelType === 'vits' || result.modelType === 'matcha')) {
+  // Show VITS/Matcha-specific options
+}
+```
+
+**Returns:** `{ success, detectedModels: [{ type, modelDir }], modelType? }`
+
+## Advanced Topics
+
+### Path Resolution and Initialization
+
+- **Asset paths** are relative to the app's asset root (e.g. `models/whisper-tiny`). Always use a consistent prefix (e.g. `models/`) so `listAssetModels()` and your asset path config match.
+- **File paths** must be **absolute**. For PAD, use the string returned by `getAssetPackPath()` (plus the chosen folder). For downloads, use e.g. `RNFS.DocumentDirectoryPath + '/sherpa-onnx/models/...'`.
+- You can pass `modelPath: { type: 'asset', path }` or `modelPath: { type: 'file', path }` directly to `createSTT` / `createTTS`; they resolve internally.
+
+### Combining Bundled and PAD/File Models
+
+To show both bundled and PAD (or file-based) models in one list:
+
+1. Call `listAssetModels()` for bundled models
+2. Call `listModelsAtPath(padPath)` for PAD/file models
+3. Merge the two lists in your UI (tag the source so you know whether to use `assetModelPath` or `fileModelPath`)
+
+### Download API and Local Paths
+
+For models **downloaded in-app** with the download API:
+
+- Use `getLocalModelPathByCategory(category, id)` to get the local directory path
+- Pass that path as `modelPath: { type: 'file', path: localPath }` to init functions
+- To list what's already downloaded, use `listDownloadedModelsByCategory(category)`
+
+See the [Download Manager](/guides/download-manager) guide for more details.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Model directory does not exist">
+    **Bundled:** Check the asset path (e.g. `models/your-folder`) and that the folder is actually in the app's assets (Android: `assets/models/`; iOS: folder reference in the app target, Copy Bundle Resources).
+    
+    **PAD:** Ensure the app was installed with the asset pack (e.g. via `installDebugWithPad` or the release AAB). If not, `getAssetPackPath()` is `null` and you must use a fallback path.
+    
+    **File:** Ensure the path is absolute and the folder exists on disk.
+  </Accordion>
+
+  <Accordion title="Cannot auto-detect model type / initialization fails">
+    - Ensure the folder contains the required files for at least one model type (see [Supported Models](/guides/supported-models))
+    - File names are case-sensitive
+    - Try passing an explicit `modelType` (e.g. `'whisper'`, `'vits'`) if you know the type
+    - Check that no required file is missing (e.g. `tokens.txt`)
+  </Accordion>
+
+  <Accordion title="getAssetPackPath returns null">
+    The app was not installed from a bundle that includes the asset pack. Install via the AAB (e.g. `yarn android:pad` or the release AAB with bundletool). Plain `installDebug` does not include the pack.
+  </Accordion>
+
+  <Accordion title="List is empty or missing models">
+    **Bundled:** Verify assets are in the right place and that the app was rebuilt after adding models.
+    
+    **PAD:** Confirm `getAssetPackPath()` returns a non-null path and that you pass that path to `listModelsAtPath()`.
+    
+    **File:** Ensure the path passed to `listModelsAtPath()` is the directory that directly contains model folders. Use `recursive: true` only if your layout has nested model folders.
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Supported Models" icon="list" href="/guides/supported-models">
+    Tables of supported STT and TTS model types with download links
+  </Card>
+  <Card title="Download Manager" icon="download" href="/guides/download-manager">
+    Download models in-app with progress tracking and caching
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/guides/execution-providers">
+    Hardware acceleration with NNAPI, XNNPACK, Core ML, and QNN
+  </Card>
+  <Card title="Migration Guide" icon="arrow-right" href="/guides/migration">
+    Breaking changes and migration from earlier versions
+  </Card>
+</CardGroup>

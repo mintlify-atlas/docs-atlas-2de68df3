@@ -1,0 +1,449 @@
+---
+title: 'Streaming Speech-to-Text'
+description: 'Real-time speech recognition with incremental transcription'
+icon: 'tower-broadcast'
+---
+
+## Overview
+
+Streaming STT enables real-time speech recognition with incremental results and automatic endpoint detection. Perfect for live transcription from microphones or continuous audio streams.
+
+## Quick Start
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+// 1) Create streaming engine
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'auto',
+  enableEndpoint: true,
+});
+
+// 2) Create a stream (one per session)
+const stream = await engine.createStream();
+
+// 3) Feed audio chunks
+const samples = getPcmSamplesFromMic(); // float[] in [-1, 1]
+await stream.acceptWaveform(samples, 16000);
+
+if (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  console.log('Partial:', result.text);
+  
+  if (await stream.isEndpoint()) {
+    console.log('Utterance ended');
+  }
+}
+
+// 4) Cleanup
+await stream.release();
+await engine.destroy();
+```
+
+## Convenient Single-Call API
+
+Process audio chunks with one call:
+
+```typescript
+const { result, isEndpoint } = await stream.processAudioChunk(samples, 16000);
+console.log(result.text);
+if (isEndpoint) {
+  console.log('End of utterance');
+}
+```
+
+## Supported Model Types
+
+Only streaming-capable models work with this API:
+
+| Model Type | Description |
+|------------|-------------|
+| `transducer` | Zipformer streaming transducer |
+| `paraformer` | Paraformer streaming |
+| `zipformer2_ctc` | Zipformer2 CTC |
+| `nemo_ctc` | NVIDIA NeMo CTC |
+| `tone_ctc` | Tone CTC |
+
+**Note:** Offline-only models like Whisper and SenseVoice are **not supported** for streaming.
+
+### Check Model Compatibility
+
+```typescript
+import { getOnlineTypeOrNull } from 'react-native-sherpa-onnx/stt';
+
+const detectedType = 'transducer';
+const onlineType = getOnlineTypeOrNull(detectedType);
+
+if (onlineType !== null) {
+  // Model supports streaming
+  const engine = await createStreamingSTT({
+    modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+    modelType: onlineType,
+  });
+} else {
+  console.log('Model is offline-only');
+}
+```
+
+## Engine Initialization
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'auto',  // or explicit: 'transducer', 'paraformer', etc.
+  
+  // Endpoint detection
+  enableEndpoint: true,
+  endpointConfig: {
+    rule1: {
+      mustContainNonSilence: false,
+      minTrailingSilence: 2.4,
+      minUtteranceLength: 0,
+    },
+    rule2: {
+      mustContainNonSilence: true,
+      minTrailingSilence: 1.4,
+      minUtteranceLength: 0,
+    },
+    rule3: {
+      mustContainNonSilence: false,
+      minTrailingSilence: 0,
+      minUtteranceLength: 20,  // max utterance length
+    },
+  },
+  
+  // Decoding
+  decodingMethod: 'greedy_search',  // or 'modified_beam_search'
+  maxActivePaths: 4,
+  
+  // Hotwords (transducer only)
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 1.5,
+  
+  // Performance
+  numThreads: 2,
+  provider: 'cpu',  // 'nnapi', 'qnn', 'xnnpack'
+  
+  // Input normalization
+  enableInputNormalization: true,  // Auto-scale audio chunks
+});
+```
+
+### Initialization Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `modelPath` | `ModelPathConfig` | Path to model directory |
+| `modelType` | `OnlineSTTModelType \| 'auto'` | Model architecture |
+| `enableEndpoint` | `boolean` | Enable end-of-utterance detection (default: true) |
+| `endpointConfig` | `EndpointConfig` | Endpoint detection rules |
+| `decodingMethod` | `string` | 'greedy_search' or 'modified_beam_search' |
+| `maxActivePaths` | `number` | Beam search size (default: 4) |
+| `hotwordsFile` | `string` | Path to hotwords file (transducer only) |
+| `hotwordsScore` | `number` | Hotwords boost score (default: 1.5) |
+| `numThreads` | `number` | Inference threads (default: 1) |
+| `provider` | `string` | Execution provider |
+| `enableInputNormalization` | `boolean` | Auto-scale input audio (default: true) |
+
+## Stream Lifecycle
+
+### Create Stream
+
+Create one stream per recognition session:
+
+```typescript
+const stream = await engine.createStream();
+
+// Optional: pass hotwords inline
+const streamWithHotwords = await engine.createStream('CUSTOM PHRASE 2.0');
+```
+
+### Feed Audio
+
+```typescript
+// Accept waveform samples
+await stream.acceptWaveform(samples, sampleRate);
+
+// Check if ready to decode
+if (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  console.log('Text:', result.text);
+  console.log('Tokens:', result.tokens);
+}
+```
+
+### Signal End of Input
+
+```typescript
+// When no more audio will be fed
+await stream.inputFinished();
+
+// Decode final buffered audio
+while (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  console.log('Final:', result.text);
+}
+```
+
+### Reset Stream
+
+Reuse the same stream for next utterance:
+
+```typescript
+await stream.reset();
+// Stream is now ready for new audio
+```
+
+### Release Stream
+
+Free resources when done:
+
+```typescript
+await stream.release();
+// Do not use stream after release
+```
+
+## Endpoint Detection
+
+Automatic detection of when an utterance ends:
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+  modelType: 'transducer',
+  enableEndpoint: true,
+  endpointConfig: {
+    // Rule 1: Long silence, no speech required
+    rule1: {
+      mustContainNonSilence: false,
+      minTrailingSilence: 1.0,
+      minUtteranceLength: 0,
+    },
+    // Rule 2: Shorter silence after speech
+    rule2: {
+      mustContainNonSilence: true,
+      minTrailingSilence: 0.8,
+      minUtteranceLength: 0,
+    },
+    // Rule 3: Max utterance length
+    rule3: {
+      mustContainNonSilence: false,
+      minTrailingSilence: 0,
+      minUtteranceLength: 30,  // 30 seconds max
+    },
+  },
+});
+```
+
+### Using Endpoints
+
+```typescript
+await stream.acceptWaveform(samples, 16000);
+
+while (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  updateUI(result.text);
+  
+  if (await stream.isEndpoint()) {
+    console.log('Utterance complete:', result.text);
+    await stream.reset();  // Start fresh for next utterance
+    break;
+  }
+}
+```
+
+## Typical Recording Loop
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'transducer',
+  enableEndpoint: true,
+});
+
+const stream = await engine.createStream();
+
+// Start recording
+const audioRecorder = startMicRecording({
+  onChunk: async (samples: number[], sampleRate: number) => {
+    await stream.acceptWaveform(samples, sampleRate);
+    
+    while (await stream.isReady()) {
+      await stream.decode();
+      const result = await stream.getResult();
+      
+      // Update UI with partial result
+      setTranscript(result.text);
+      
+      if (await stream.isEndpoint()) {
+        // Save final transcript
+        saveFinalTranscript(result.text);
+        
+        // Reset for next utterance
+        await stream.reset();
+      }
+    }
+  },
+});
+
+// When user stops recording
+function stopRecording() {
+  audioRecorder.stop();
+  await stream.inputFinished();
+  await stream.release();
+  await engine.destroy();
+}
+```
+
+## Input Normalization
+
+By default, `processAudioChunk()` applies adaptive normalization (scales peak to ~0.8) to handle varying device levels.
+
+**Disable if audio is pre-normalized:**
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+  modelType: 'transducer',
+  enableInputNormalization: false,  // Pass audio unchanged
+});
+```
+
+## Multiple Streams
+
+Create multiple streams from one engine:
+
+```typescript
+const engine = await createStreamingSTT({ /* ... */ });
+
+const stream1 = await engine.createStream();
+const stream2 = await engine.createStream();
+
+// Use independently
+await stream1.acceptWaveform(samples1, 16000);
+await stream2.acceptWaveform(samples2, 16000);
+
+// Release when done
+await stream1.release();
+await stream2.release();
+await engine.destroy();
+```
+
+## Hotwords for Streaming
+
+For transducer models, boost specific phrases:
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+  modelType: 'transducer',
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 1.5,
+});
+
+// Or pass inline per stream
+const stream = await engine.createStream('REACT NATIVE 2.0\nSHERPA ONNX 1.8');
+```
+
+## Result Fields
+
+```typescript
+interface StreamingSttResult {
+  text: string;           // Transcribed text
+  tokens: string[];       // Token list
+  timestamps: number[];   // Token timestamps (model-dependent)
+}
+```
+
+## Performance Tips
+
+### Threading
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+  modelType: 'transducer',
+  numThreads: 4,  // Use multiple cores
+});
+```
+
+### Execution Providers
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+  modelType: 'transducer',
+  provider: 'nnapi',  // Hardware acceleration (Android)
+});
+```
+
+### Chunk Size
+
+Balance between latency and overhead:
+
+- **Too small:** Frequent bridge calls, higher CPU overhead
+- **Too large:** Delayed partial results
+- **Recommended:** 100-200ms chunks (1600-3200 samples at 16 kHz)
+
+## Error Handling
+
+```typescript
+try {
+  const engine = await createStreamingSTT({
+    modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+    modelType: 'auto',
+  });
+  
+  const stream = await engine.createStream();
+  
+  await stream.acceptWaveform(samples, 16000);
+  
+  if (await stream.isReady()) {
+    await stream.decode();
+    const result = await stream.getResult();
+    console.log(result.text);
+  }
+  
+  await stream.release();
+  await engine.destroy();
+} catch (error) {
+  console.error('Streaming STT error:', error.message);
+}
+```
+
+## Cleanup
+
+Always release resources:
+
+```typescript
+// After destroy() or release(), calling methods will throw
+try {
+  const engine = await createStreamingSTT({ /* ... */ });
+  const stream = await engine.createStream();
+  
+  // ... use stream ...
+  
+  await stream.release();
+  await engine.destroy();
+} catch (error) {
+  // Handle errors
+} finally {
+  // Ensure cleanup even on error
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Offline STT" icon="microphone" href="/features/speech-to-text">
+    Batch transcription of audio files
+  </Card>
+  <Card title="Model Setup" icon="download" href="/setup/models">
+    Download and configure streaming models
+  </Card>
+</CardGroup>

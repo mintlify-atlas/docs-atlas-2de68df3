@@ -1,0 +1,530 @@
+---
+title: 'createStreamingTTS()'
+description: 'Create a streaming TTS engine for real-time audio generation'
+---
+
+## createStreamingTTS()
+
+Creates a streaming TTS engine instance for real-time speech synthesis. Use this when you need:
+- Incremental audio generation with chunk callbacks
+- Real-time playback while generating
+- Lower latency for interactive applications
+
+For batch generation of complete audio files, use [`createTTS()`](/api/tts/create-tts) instead.
+
+```typescript
+function createStreamingTTS(
+  options: TTSInitializeOptions | ModelPathConfig
+): Promise<StreamingTtsEngine>
+```
+
+### Parameters
+
+<ParamField path="options" type="TTSInitializeOptions | ModelPathConfig" required>
+  TTS initialization options. Can be either:
+  - Full `TTSInitializeOptions` object with model path and configuration
+  - Simple `ModelPathConfig` for quick initialization with defaults
+  
+  See [Configuration](/api/tts/configuration#ttsinitializeoptions) for details.
+</ParamField>
+
+### Returns
+
+Returns a `Promise` that resolves to a [`StreamingTtsEngine`](#streamingttsengine) instance.
+
+### Example
+
+```typescript
+import { createStreamingTTS } from 'react-native-sherpa-onnx';
+
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+// Start built-in PCM player
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1); // 1 = mono
+
+// Generate and play in real-time
+const controller = await tts.generateSpeechStream(
+  'Hello, this is streaming speech synthesis!',
+  undefined,
+  {
+    onChunk: async (chunk) => {
+      // Play audio chunk as it's generated
+      await tts.writePcmChunk(chunk.samples);
+      console.log(`Progress: ${(chunk.progress * 100).toFixed(1)}%`);
+    },
+    onEnd: async () => {
+      await tts.stopPcmPlayer();
+      console.log('Generation complete');
+    },
+    onError: (error) => {
+      console.error('Error:', error.message);
+    },
+  }
+);
+
+// Clean up when done
+await tts.destroy();
+```
+
+---
+
+## StreamingTtsEngine
+
+The streaming TTS engine interface returned by `createStreamingTTS()`.
+
+### Properties
+
+<ParamField path="instanceId" type="string" readonly>
+  Unique identifier for this streaming TTS engine instance.
+</ParamField>
+
+### Methods
+
+#### generateSpeechStream()
+
+Generates speech in streaming mode with chunk callbacks.
+
+```typescript
+generateSpeechStream(
+  text: string,
+  options: TtsGenerationOptions | undefined,
+  handlers: TtsStreamHandlers
+): Promise<TtsStreamController>
+```
+
+<ParamField path="text" type="string" required>
+  The text to synthesize into speech.
+</ParamField>
+
+<ParamField path="options" type="TtsGenerationOptions">
+  Optional generation parameters (speaker ID, speed, voice cloning, etc.).
+  
+  See [Configuration](/api/tts/configuration#ttsgenerationoptions) for details.
+</ParamField>
+
+<ParamField path="handlers" type="TtsStreamHandlers" required>
+  Event handlers for stream chunks, completion, and errors.
+  
+  See [TtsStreamHandlers](#ttsstreamhandlers) below.
+</ParamField>
+
+**Returns:** `Promise<TtsStreamController>` - Controller for managing the stream.
+
+**Example:**
+
+```typescript
+const allSamples: number[] = [];
+
+const controller = await tts.generateSpeechStream(
+  'This is a test',
+  { speed: 1.2, sid: 0 },
+  {
+    onChunk: (chunk) => {
+      allSamples.push(...chunk.samples);
+      if (chunk.isFinal) {
+        console.log('Final chunk received');
+      }
+    },
+    onEnd: (event) => {
+      if (event.cancelled) {
+        console.log('Generation was cancelled');
+      } else {
+        console.log('Complete! Total samples:', allSamples.length);
+      }
+    },
+    onError: (error) => {
+      console.error('Error:', error.message);
+    },
+  }
+);
+
+// Cancel if needed
+// await controller.cancel();
+```
+
+---
+
+#### cancelSpeechStream()
+
+Cancels the current streaming generation.
+
+```typescript
+cancelSpeechStream(): Promise<void>
+```
+
+**Example:**
+
+```typescript
+// Start generation
+const controller = await tts.generateSpeechStream('Long text...', undefined, handlers);
+
+// Cancel after 1 second
+setTimeout(async () => {
+  await tts.cancelSpeechStream();
+}, 1000);
+```
+
+---
+
+#### startPcmPlayer()
+
+Starts the built-in PCM audio player for real-time playback.
+
+```typescript
+startPcmPlayer(sampleRate: number, channels: number): Promise<void>
+```
+
+<ParamField path="sampleRate" type="number" required>
+  Sample rate in Hz (e.g., 22050, 44100). Should match the model's sample rate.
+</ParamField>
+
+<ParamField path="channels" type="number" required>
+  Number of audio channels:
+  - `1` = mono (recommended for TTS)
+  - `2` = stereo
+</ParamField>
+
+**Example:**
+
+```typescript
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);
+```
+
+---
+
+#### writePcmChunk()
+
+Writes audio samples to the PCM player. Call this from the `onChunk` handler.
+
+```typescript
+writePcmChunk(samples: number[]): Promise<void>
+```
+
+<ParamField path="samples" type="number[]" required>
+  Float PCM samples in range [-1.0, 1.0].
+</ParamField>
+
+**Example:**
+
+```typescript
+await tts.generateSpeechStream('Hello', undefined, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples);
+  },
+});
+```
+
+---
+
+#### stopPcmPlayer()
+
+Stops and releases the PCM player.
+
+```typescript
+stopPcmPlayer(): Promise<void>
+```
+
+**Example:**
+
+```typescript
+try {
+  await tts.startPcmPlayer(22050, 1);
+  // ... generate and play audio ...
+} finally {
+  await tts.stopPcmPlayer();
+}
+```
+
+---
+
+#### getModelInfo()
+
+Returns model capabilities (sample rate and number of speakers).
+
+```typescript
+getModelInfo(): Promise<TTSModelInfo>
+```
+
+**Returns:** Promise resolving to model information.
+
+**Example:**
+
+```typescript
+const info = await tts.getModelInfo();
+console.log(`Sample rate: ${info.sampleRate}Hz`);
+console.log(`Speakers: ${info.numSpeakers}`);
+```
+
+---
+
+#### getSampleRate()
+
+Returns the sample rate at which the model generates audio.
+
+```typescript
+getSampleRate(): Promise<number>
+```
+
+**Returns:** Promise resolving to sample rate in Hz.
+
+---
+
+#### getNumSpeakers()
+
+Returns the number of speakers/voices available in the model.
+
+```typescript
+getNumSpeakers(): Promise<number>
+```
+
+**Returns:** Promise resolving to number of speakers.
+
+---
+
+#### destroy()
+
+Releases native resources. **Always call this when done** to prevent memory leaks.
+
+```typescript
+destroy(): Promise<void>
+```
+
+**Example:**
+
+```typescript
+try {
+  const controller = await tts.generateSpeechStream('Hello', undefined, handlers);
+  // ... handle stream ...
+} finally {
+  await tts.destroy();
+}
+```
+
+---
+
+## TtsStreamHandlers
+
+Event handlers for streaming TTS generation.
+
+```typescript
+interface TtsStreamHandlers {
+  onChunk?: (chunk: TtsStreamChunk) => void;
+  onEnd?: (event: TtsStreamEnd) => void;
+  onError?: (event: TtsStreamError) => void;
+}
+```
+
+### onChunk
+
+Called for each audio chunk as it's generated.
+
+<ParamField path="chunk" type="TtsStreamChunk">
+  Audio chunk data. See [TtsStreamChunk](#ttsstreamchunk) below.
+</ParamField>
+
+### onEnd
+
+Called when generation completes or is cancelled.
+
+<ParamField path="event" type="TtsStreamEnd">
+  Completion event. See [TtsStreamEnd](#ttsstreamend) below.
+</ParamField>
+
+### onError
+
+Called when an error occurs during generation.
+
+<ParamField path="event" type="TtsStreamError">
+  Error event. See [TtsStreamError](#ttsstreamerror) below.
+</ParamField>
+
+---
+
+## TtsStreamChunk
+
+Audio chunk received during streaming generation.
+
+```typescript
+interface TtsStreamChunk {
+  instanceId?: string;
+  requestId?: string;
+  samples: number[];
+  sampleRate: number;
+  progress: number;
+  isFinal: boolean;
+}
+```
+
+<ParamField path="instanceId" type="string">
+  Instance ID of the TTS engine that generated this chunk.
+</ParamField>
+
+<ParamField path="requestId" type="string">
+  Request ID for this specific generation.
+</ParamField>
+
+<ParamField path="samples" type="number[]">
+  Float PCM audio samples in range [-1.0, 1.0].
+</ParamField>
+
+<ParamField path="sampleRate" type="number">
+  Sample rate of the audio in Hz.
+</ParamField>
+
+<ParamField path="progress" type="number">
+  Generation progress as a float between 0.0 and 1.0.
+</ParamField>
+
+<ParamField path="isFinal" type="boolean">
+  `true` if this is the last chunk in the stream.
+</ParamField>
+
+---
+
+## TtsStreamEnd
+
+Event emitted when streaming generation ends.
+
+```typescript
+interface TtsStreamEnd {
+  instanceId?: string;
+  requestId?: string;
+  cancelled: boolean;
+}
+```
+
+<ParamField path="instanceId" type="string">
+  Instance ID of the TTS engine.
+</ParamField>
+
+<ParamField path="requestId" type="string">
+  Request ID for this generation.
+</ParamField>
+
+<ParamField path="cancelled" type="boolean">
+  `true` if generation was cancelled, `false` if it completed normally.
+</ParamField>
+
+---
+
+## TtsStreamError
+
+Event emitted when an error occurs during streaming.
+
+```typescript
+interface TtsStreamError {
+  instanceId?: string;
+  requestId?: string;
+  message: string;
+}
+```
+
+<ParamField path="instanceId" type="string">
+  Instance ID of the TTS engine.
+</ParamField>
+
+<ParamField path="requestId" type="string">
+  Request ID for this generation.
+</ParamField>
+
+<ParamField path="message" type="string">
+  Error message describing what went wrong.
+</ParamField>
+
+---
+
+## TtsStreamController
+
+Controller returned by `generateSpeechStream()` for managing the stream.
+
+```typescript
+interface TtsStreamController {
+  cancel(): Promise<void>;
+  unsubscribe(): void;
+}
+```
+
+### cancel()
+
+Cancels the ongoing TTS generation.
+
+```typescript
+const controller = await tts.generateSpeechStream('text', undefined, handlers);
+await controller.cancel();
+```
+
+### unsubscribe()
+
+Removes event listeners. Called automatically on end/error, or can be called manually.
+
+```typescript
+controller.unsubscribe();
+```
+
+---
+
+## Complete Example
+
+```typescript
+import { createStreamingTTS } from 'react-native-sherpa-onnx';
+
+async function streamingTtsExample() {
+  // Initialize streaming TTS
+  const tts = await createStreamingTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+    modelType: 'vits',
+  });
+
+  try {
+    // Get model info and start player
+    const info = await tts.getModelInfo();
+    console.log(`Model: ${info.sampleRate}Hz, ${info.numSpeakers} speakers`);
+    
+    await tts.startPcmPlayer(info.sampleRate, 1);
+
+    // Generate and play streaming audio
+    const controller = await tts.generateSpeechStream(
+      'This is real-time speech synthesis!',
+      { speed: 1.0, sid: 0 },
+      {
+        onChunk: async (chunk) => {
+          await tts.writePcmChunk(chunk.samples);
+          console.log(
+            `Chunk: ${chunk.samples.length} samples, ` +
+            `${(chunk.progress * 100).toFixed(1)}% complete`
+          );
+        },
+        onEnd: async (event) => {
+          await tts.stopPcmPlayer();
+          if (event.cancelled) {
+            console.log('Cancelled');
+          } else {
+            console.log('Complete');
+          }
+        },
+        onError: (error) => {
+          console.error('Error:', error.message);
+        },
+      }
+    );
+
+    // Optionally cancel after delay
+    // setTimeout(() => controller.cancel(), 2000);
+  } finally {
+    await tts.destroy();
+  }
+}
+```
+
+---
+
+## See Also
+
+- [createTTS()](/api/tts/create-tts) - For batch speech generation
+- [Configuration](/api/tts/configuration) - Detailed configuration options
+- [Types](/api/tts/types) - TypeScript type definitions

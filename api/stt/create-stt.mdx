@@ -1,0 +1,208 @@
+---
+title: "createSTT"
+description: "Create offline STT engine for batch audio transcription"
+---
+
+## createSTT()
+
+Creates an offline speech-to-text engine instance for transcribing complete audio files or buffers. Call `destroy()` when done to free native resources.
+
+```typescript
+function createSTT(
+  options: STTInitializeOptions | ModelPathConfig
+): Promise<SttEngine>
+```
+
+### Parameters
+
+<ParamField path="options" type="STTInitializeOptions | ModelPathConfig" required>
+  Configuration object or simple model path. See [Configuration](/api/stt/configuration) for full options.
+</ParamField>
+
+### Returns
+
+Promise resolving to an [`SttEngine`](#sttengine) instance.
+
+### Example
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  modelType: 'whisper',
+  modelOptions: {
+    whisper: {
+      language: 'en',
+      task: 'transcribe'
+    }
+  }
+});
+
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log(result.text);
+
+await stt.destroy();
+```
+
+---
+
+## SttEngine
+
+Offline STT engine interface returned by `createSTT()`.
+
+### Properties
+
+<ParamField path="instanceId" type="string" readonly>
+  Unique identifier for this engine instance.
+</ParamField>
+
+### Methods
+
+#### transcribeFile()
+
+Transcribe audio from a file path.
+
+```typescript
+transcribeFile(filePath: string): Promise<SttRecognitionResult>
+```
+
+<ParamField path="filePath" type="string" required>
+  Absolute path to audio file (WAV, FLAC, etc.).
+</ParamField>
+
+**Returns:** Promise resolving to [`SttRecognitionResult`](/api/stt/types#sttrecognitionresult).
+
+**Example:**
+
+```typescript
+const result = await stt.transcribeFile('/sdcard/recording.wav');
+console.log('Text:', result.text);
+console.log('Tokens:', result.tokens);
+console.log('Language:', result.lang);
+```
+
+#### transcribeSamples()
+
+Transcribe audio from PCM samples in memory.
+
+```typescript
+transcribeSamples(
+  samples: number[],
+  sampleRate: number
+): Promise<SttRecognitionResult>
+```
+
+<ParamField path="samples" type="number[]" required>
+  PCM audio samples as float values in range [-1, 1].
+</ParamField>
+
+<ParamField path="sampleRate" type="number" required>
+  Sample rate in Hz (e.g. 16000, 44100).
+</ParamField>
+
+**Returns:** Promise resolving to [`SttRecognitionResult`](/api/stt/types#sttrecognitionresult).
+
+**Example:**
+
+```typescript
+const samples = new Float32Array(audioBuffer);
+const result = await stt.transcribeSamples(
+  Array.from(samples),
+  16000
+);
+console.log(result.text);
+```
+
+#### setConfig()
+
+Update runtime configuration (hotwords, decoding method, etc.) without recreating the engine.
+
+```typescript
+setConfig(config: SttRuntimeConfig): Promise<void>
+```
+
+<ParamField path="config" type="SttRuntimeConfig" required>
+  Runtime configuration options. See [SttRuntimeConfig](/api/stt/configuration#sttruntimeconfig).
+</ParamField>
+
+**Example:**
+
+```typescript
+await stt.setConfig({
+  decodingMethod: 'modified_beam_search',
+  maxActivePaths: 8,
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 2.0
+});
+```
+
+#### destroy()
+
+Release native resources. The engine cannot be used after calling this method.
+
+```typescript
+destroy(): Promise<void>
+```
+
+**Example:**
+
+```typescript
+await stt.destroy();
+```
+
+---
+
+## detectSttModel()
+
+Detect STT model type and structure without initializing the recognizer. Stateless utility function.
+
+```typescript
+function detectSttModel(
+  modelPath: ModelPathConfig,
+  options?: { preferInt8?: boolean; modelType?: STTModelType }
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>
+```
+
+### Parameters
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model path configuration (asset, file, or auto).
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional detection options.
+  
+  <Expandable title="properties">
+    <ParamField path="preferInt8" type="boolean">
+      Prefer int8 quantized models.
+    </ParamField>
+    
+    <ParamField path="modelType" type="STTModelType">
+      Force specific model type detection.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+Object with detection results:
+- `success`: Whether detection succeeded
+- `detectedModels`: Array of detected model types and directories
+- `modelType`: Primary detected model type
+
+### Example
+
+```typescript
+const result = await detectSttModel({
+  type: 'asset',
+  path: 'models/sherpa-onnx-whisper-tiny-en'
+});
+
+if (result.success && result.detectedModels.length > 0) {
+  console.log('Detected:', result.modelType);
+  console.log('Models:', result.detectedModels);
+}
+```

@@ -1,0 +1,355 @@
+---
+title: 'Source Separation'
+description: 'Separate voice from music and background audio (Coming in v0.6.0)'
+icon: 'sliders'
+---
+
+<Note>
+  This feature is **coming in version 0.6.0** and is not yet available in the current release.
+</Note>
+
+## Overview
+
+Source Separation will enable isolating individual audio sources from mixed recordings. Separate vocals from music, remove background sounds, or extract specific instruments.
+
+## Planned Features
+
+<CardGroup cols={2}>
+  <Card title="Voice/Music Separation" icon="music">
+    Separate vocals from instrumental background
+  </Card>
+  <Card title="Multi-track Isolation" icon="layer-group">
+    Extract multiple sources simultaneously
+  </Card>
+  <Card title="Background Removal" icon="eraser">
+    Remove unwanted background sounds
+  </Card>
+  <Card title="Export Tracks" icon="file-export">
+    Save separated sources individually
+  </Card>
+</CardGroup>
+
+## Expected API (Preview)
+
+While the API is not finalized, the expected interface will be:
+
+```typescript
+import { createSeparation } from 'react-native-sherpa-onnx/separation';
+
+// Create separation engine
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/demucs' },
+  stems: ['vocals', 'drums', 'bass', 'other'],
+});
+
+// Separate audio file
+const result = await separator.processFile('/path/to/song.wav');
+
+// Access separated tracks
+console.log('Vocals:', result.vocals);
+console.log('Instrumental:', result.other);
+
+// Save individual tracks
+await saveAudioToFile(result.vocals, '/path/to/vocals.wav');
+await saveAudioToFile(result.other, '/path/to/instrumental.wav');
+
+// Cleanup
+await separator.destroy();
+```
+
+## Use Cases
+
+### 1. Karaoke Generation
+
+Create instrumental versions by removing vocals:
+
+```typescript
+// Planned API
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/demucs' },
+  stems: ['vocals', 'other'],
+});
+
+const result = await separator.processFile('/path/to/song.wav');
+
+// Save instrumental (everything except vocals)
+await saveAudioToFile(result.other, '/path/to/karaoke.wav');
+
+await separator.destroy();
+```
+
+### 2. Podcast Cleanup
+
+Remove background music from interviews:
+
+```typescript
+// Planned API
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/voice-separator' },
+  stems: ['speech', 'music'],
+});
+
+const result = await separator.processFile('/path/to/interview.wav');
+
+// Use speech-only track for transcription
+const stt = await createSTT(sttConfig);
+const transcript = await stt.transcribeSamples(
+  result.speech.samples,
+  result.speech.sampleRate
+);
+
+console.log('Transcript:', transcript.text);
+
+await separator.destroy();
+await stt.destroy();
+```
+
+### 3. Music Production
+
+Extract individual instruments:
+
+```typescript
+// Planned API
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/demucs' },
+  stems: ['vocals', 'drums', 'bass', 'other'],
+});
+
+const result = await separator.processFile('/path/to/track.wav');
+
+// Save each stem
+await saveAudioToFile(result.vocals, '/path/to/vocals.wav');
+await saveAudioToFile(result.drums, '/path/to/drums.wav');
+await saveAudioToFile(result.bass, '/path/to/bass.wav');
+await saveAudioToFile(result.other, '/path/to/other.wav');
+
+await separator.destroy();
+```
+
+### 4. Audio Restoration
+
+Remove background noise while preserving speech:
+
+```typescript
+// Planned API
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/voice-separator' },
+  stems: ['speech', 'noise'],
+});
+
+const result = await separator.processFile('/path/to/noisy-recording.wav');
+
+// Save clean speech
+await saveAudioToFile(result.speech, '/path/to/clean-speech.wav');
+```
+
+## Planned Configuration
+
+```typescript
+// Expected configuration options
+interface SeparationConfig {
+  modelPath: ModelPathConfig;
+  stems: string[];              // Sources to separate
+  sampleRate?: number;          // Target sample rate
+  splitSize?: number;           // Chunk size for processing
+  overlapRatio?: number;        // Overlap between chunks (0..1)
+  normalize?: boolean;          // Normalize output levels
+}
+```
+
+## Expected Output
+
+```typescript
+interface SeparationResult {
+  // Dynamic keys based on requested stems
+  [stem: string]: {
+    samples: number[];   // PCM samples
+    sampleRate: number;  // Sample rate
+  };
+  
+  // Metadata
+  processingTime?: number;  // Processing duration (ms)
+  quality?: number;         // Separation quality estimate (0..1)
+}
+
+// Example with 2 stems
+interface VoiceSeparationResult extends SeparationResult {
+  vocals: { samples: number[]; sampleRate: number };
+  instrumental: { samples: number[]; sampleRate: number };
+}
+
+// Example with 4 stems
+interface MusicSeparationResult extends SeparationResult {
+  vocals: { samples: number[]; sampleRate: number };
+  drums: { samples: number[]; sampleRate: number };
+  bass: { samples: number[]; sampleRate: number };
+  other: { samples: number[]; sampleRate: number };
+}
+```
+
+## Common Stem Configurations
+
+```typescript
+// Voice/Music separation (2 stems)
+const voiceSeparator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/voice-music' },
+  stems: ['vocals', 'music'],
+});
+
+// Full music separation (4 stems)
+const musicSeparator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/demucs' },
+  stems: ['vocals', 'drums', 'bass', 'other'],
+});
+
+// Speech/Noise separation
+const speechSeparator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/speech-noise' },
+  stems: ['speech', 'noise'],
+});
+```
+
+## Expected Models
+
+Likely model support:
+
+- **Demucs** - State-of-the-art music separation (4-stem)
+- **Spleeter** - Fast music separation
+- **Wave-U-Net** - Real-time capable separation
+- **Custom sherpa-onnx models** - Optimized for mobile
+
+## Performance Considerations
+
+Source separation is computationally intensive:
+
+```typescript
+// Planned options for performance
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/demucs' },
+  stems: ['vocals', 'other'],
+  
+  // Performance tuning
+  splitSize: 10,        // Process in 10-second chunks
+  overlapRatio: 0.25,   // 25% overlap for continuity
+  sampleRate: 22050,    // Lower sample rate for speed
+  
+  // Use hardware acceleration if available
+  provider: 'gpu',
+});
+```
+
+## Timeline
+
+Source separation support is planned for:
+
+<Steps>
+  <Step title="Version 0.6.0">
+    Initial separation with 2-stem voice/music
+  </Step>
+  <Step title="Future versions">
+    Multi-stem separation and real-time processing
+  </Step>
+</Steps>
+
+## Stay Updated
+
+To track progress or contribute:
+
+- Watch the [GitHub repository](https://github.com/XDcobra/react-native-sherpa-onnx)
+- Check the [changelog](https://github.com/XDcobra/react-native-sherpa-onnx/blob/main/CHANGELOG.md)
+- Join discussions in issues or PRs
+
+## Current Workarounds
+
+While separation is not available, you can:
+
+1. **External tools** - Use desktop software (Spleeter, Demucs) offline
+2. **Cloud APIs** - Use commercial separation services
+3. **Pre-processing** - Separate audio before importing to app
+
+### Offline Processing Example
+
+```bash
+# Using Spleeter CLI (offline pre-processing)
+spleeter separate -p spleeter:2stems -o output/ input.wav
+
+# Then import separated tracks to your app
+```
+
+## Integration with STT
+
+When available, separation will enhance STT pipelines:
+
+```typescript
+// Future combined API (preview)
+import { createSeparation } from 'react-native-sherpa-onnx/separation';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+// Separate voice from music
+const separator = await createSeparation({
+  modelPath: { type: 'asset', path: 'models/voice-music' },
+  stems: ['vocals', 'music'],
+});
+
+const result = await separator.processFile('/path/to/song-with-lyrics.wav');
+
+// Transcribe vocals only
+const stt = await createSTT(sttConfig);
+const transcript = await stt.transcribeSamples(
+  result.vocals.samples,
+  result.vocals.sampleRate
+);
+
+console.log('Lyrics:', transcript.text);
+
+await separator.destroy();
+await stt.destroy();
+```
+
+## Quality Comparison
+
+Expected quality metrics:
+
+```typescript
+// Planned API
+const result = await separator.processFile('/path/to/audio.wav');
+
+console.log('Separation quality:', result.quality);
+console.log('Processing time:', result.processingTime, 'ms');
+
+// Per-stem quality metrics
+for (const stem of ['vocals', 'other']) {
+  console.log(`${stem} SNR:`, result[stem].snr, 'dB');
+}
+```
+
+## Batch Processing
+
+Process multiple files:
+
+```typescript
+// Planned API
+const separator = await createSeparation(config);
+
+const files = ['/path/to/song1.wav', '/path/to/song2.wav'];
+
+for (const file of files) {
+  const result = await separator.processFile(file);
+  
+  const outputName = file.replace('.wav', '-vocals.wav');
+  await saveAudioToFile(result.vocals, outputName);
+}
+
+await separator.destroy();
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Speech Enhancement" icon="wand-magic-sparkles" href="/features/speech-enhancement">
+    Noise reduction and audio cleanup (coming in v0.5.0)
+  </Card>
+  <Card title="Speech-to-Text" icon="microphone" href="/features/speech-to-text">
+    Transcribe separated audio tracks
+  </Card>
+</CardGroup>

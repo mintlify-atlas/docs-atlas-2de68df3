@@ -1,0 +1,377 @@
+---
+title: 'Speech Enhancement'
+description: 'Improve audio quality by reducing noise and enhancing speech'
+icon: 'sparkles'
+---
+
+<Warning>
+  **Coming in v0.5.0** - This feature is planned for a future release. The API interface is subject to change.
+</Warning>
+
+## Overview
+
+Speech Enhancement improves audio quality by reducing background noise, echo, and other distortions while preserving speech clarity. This is useful for:
+
+- Preprocessing noisy recordings before transcription
+- Improving call quality in VoIP applications
+- Cleaning up field recordings
+- Enhancing podcast and video audio
+- Removing echo and reverberation
+
+## Installation
+
+Enhancement will be included in the main package:
+
+```bash
+npm install react-native-sherpa-onnx
+```
+
+## Basic Usage
+
+```typescript
+import { initializeEnhancement, enhanceAudio } from 'react-native-sherpa-onnx/enhancement';
+
+// Initialize enhancement with model
+await initializeEnhancement({
+  modelPath: {
+    type: 'auto',
+    path: 'models/enhancement-model'
+  }
+});
+
+// Enhance noisy audio
+const result = await enhanceAudio('path/to/noisy-audio.wav');
+
+console.log('Enhanced audio saved to:', result.outputPath);
+```
+
+## API Reference
+
+### initializeEnhancement()
+
+Initialize the Speech Enhancement model.
+
+```typescript
+await initializeEnhancement(options: EnhancementInitializeOptions): Promise<void>
+```
+
+#### Parameters
+
+<ParamField path="options" type="EnhancementInitializeOptions" required>
+  Configuration options for enhancement initialization
+
+  <Expandable title="properties">
+    <ParamField path="modelPath" type="ModelPathConfig" required>
+      Path configuration for the enhancement model
+      
+      <Expandable title="properties">
+        <ParamField path="type" type="'auto' | 'file'" required>
+          Type of model path resolution
+        </ParamField>
+        
+        <ParamField path="path" type="string" required>
+          Path to the model directory
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Returns
+
+Promise that resolves when enhancement is initialized.
+
+#### Example
+
+```typescript
+await initializeEnhancement({
+  modelPath: {
+    type: 'auto',
+    path: 'models/speech-enhancement'
+  }
+});
+```
+
+### enhanceAudio()
+
+Enhance speech quality in an audio file.
+
+```typescript
+await enhanceAudio(filePath: string): Promise<EnhancementResult>
+```
+
+#### Parameters
+
+<ParamField path="filePath" type="string" required>
+  Path to the audio file to enhance
+</ParamField>
+
+#### Returns
+
+Promise that resolves to enhancement result.
+
+<ResponseField name="EnhancementResult" type="object">
+  <Expandable title="properties">
+    <ResponseField name="outputPath" type="string" required>
+      Path to the enhanced audio file
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Example
+
+```typescript
+const result = await enhanceAudio('/path/to/noisy-recording.wav');
+
+console.log('Enhanced audio:', result.outputPath);
+
+// Use enhanced audio for transcription
+await transcribeRecognizer({ filePath: result.outputPath });
+```
+
+### unloadEnhancement()
+
+Release enhancement model resources.
+
+```typescript
+await unloadEnhancement(): Promise<void>
+```
+
+#### Returns
+
+Promise that resolves when resources are released.
+
+#### Example
+
+```typescript
+// When done with enhancement
+await unloadEnhancement();
+```
+
+## Types
+
+### EnhancementInitializeOptions
+
+```typescript
+interface EnhancementInitializeOptions {
+  modelPath: ModelPathConfig;
+  // Additional options will be added in v0.5.0
+}
+```
+
+### EnhancementResult
+
+```typescript
+interface EnhancementResult {
+  outputPath: string;  // Path to enhanced audio file
+  // Additional fields will be added in v0.5.0
+}
+```
+
+### ModelPathConfig
+
+```typescript
+interface ModelPathConfig {
+  type: 'auto' | 'file';
+  path: string;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose the right enhancement model">
+    Different enhancement models target different noise types:
+    - **Speech denoising**: Removes steady-state background noise (AC, traffic)
+    - **Dereverb**: Reduces echo and room reflections
+    - **Bandwidth extension**: Enhances narrowband audio to wideband
+    - **Multi-modal**: Handles various noise types simultaneously
+    
+    Select based on your primary audio quality issues.
+  </Accordion>
+
+  <Accordion title="Understand the trade-offs">
+    Speech enhancement involves quality trade-offs:
+    - **Over-processing**: Can introduce artifacts or "robotic" sound
+    - **Under-processing**: May not sufficiently improve quality
+    - **Processing time**: More aggressive enhancement takes longer
+    
+    Balance enhancement strength with naturalness for your use case.
+  </Accordion>
+
+  <Accordion title="Use as preprocessing step">
+    Enhancement works best as part of a pipeline:
+    ```typescript
+    // 1. Enhance audio quality
+    const enhanced = await enhanceAudio('noisy.wav');
+    
+    // 2. Detect speech segments
+    const segments = await detectVoiceActivity(enhanced.outputPath);
+    
+    // 3. Transcribe clean audio
+    const text = await transcribeRecognizer({ 
+      filePath: enhanced.outputPath 
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Use Cases
+
+### Preprocessing for Transcription
+
+```typescript
+import { initializeEnhancement, enhanceAudio } from 'react-native-sherpa-onnx/enhancement';
+import { transcribeRecognizer } from 'react-native-sherpa-onnx';
+
+async function transcribeNoisyAudio(audioPath: string) {
+  // Initialize enhancement
+  await initializeEnhancement({
+    modelPath: { type: 'auto', path: 'models/enhancement' }
+  });
+  
+  // Enhance audio first
+  console.log('Enhancing audio...');
+  const enhanced = await enhanceAudio(audioPath);
+  
+  // Transcribe enhanced audio
+  console.log('Transcribing...');
+  const result = await transcribeRecognizer({ 
+    filePath: enhanced.outputPath 
+  });
+  
+  return result.text;
+}
+```
+
+### Batch Processing
+
+```typescript
+import { enhanceAudio } from 'react-native-sherpa-onnx/enhancement';
+import { readdir } from 'fs/promises';
+import { join } from 'path';
+
+async function enhanceDirectory(inputDir: string, outputDir: string) {
+  const files = await readdir(inputDir);
+  const audioFiles = files.filter(f => f.endsWith('.wav'));
+  
+  console.log(`Enhancing ${audioFiles.length} files...`);
+  
+  for (const file of audioFiles) {
+    const inputPath = join(inputDir, file);
+    const result = await enhanceAudio(inputPath);
+    console.log(`Enhanced: ${file}`);
+  }
+  
+  console.log('Batch enhancement complete');
+}
+```
+
+### Real-time Audio Cleaning
+
+```typescript
+import { enhanceAudio } from 'react-native-sherpa-onnx/enhancement';
+import { AudioRecorder } from 'react-native-audio-recorder';
+
+async function recordAndEnhance() {
+  // Record audio
+  const recording = await AudioRecorder.record({
+    duration: 10000, // 10 seconds
+    sampleRate: 16000
+  });
+  
+  // Enhance immediately after recording
+  const enhanced = await enhanceAudio(recording.path);
+  
+  // Use enhanced audio
+  console.log('Clean audio ready:', enhanced.outputPath);
+  
+  return enhanced.outputPath;
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  await initializeEnhancement({
+    modelPath: {
+      type: 'auto',
+      path: 'models/enhancement'
+    }
+  });
+  
+  const result = await enhanceAudio('noisy-audio.wav');
+  
+  console.log('Enhancement successful:', result.outputPath);
+  
+} catch (error) {
+  if (error.message.includes('model not found')) {
+    console.error('Enhancement model not found. Please download the model.');
+  } else if (error.message.includes('unsupported format')) {
+    console.error('Audio format not supported. Convert to WAV format.');
+  } else {
+    console.error('Enhancement error:', error);
+  }
+} finally {
+  await unloadEnhancement();
+}
+```
+
+## Performance Considerations
+
+<Note>
+  Speech enhancement is computationally intensive:
+  - Processing time varies by model complexity (0.1x - 1.0x real-time)
+  - Memory usage increases with audio length
+  - Consider processing in chunks for long files
+  - GPU acceleration may improve performance
+  - Cache enhanced audio to avoid reprocessing
+</Note>
+
+## Limitations
+
+<Warning>
+  Enhancement has limitations:
+  - Cannot recover severely degraded audio
+  - May introduce artifacts if audio quality is extremely poor
+  - Works best with consistent noise patterns
+  - Cannot separate overlapping speakers
+  - Requires adequate sample rate (typically 16kHz minimum)
+</Warning>
+
+## Technical Details
+
+### Supported Audio Formats
+
+Enhancement will support common audio formats:
+- WAV (PCM, 16-bit, 16kHz or 48kHz recommended)
+- Additional formats may be added in v0.5.0
+
+### Processing Pipeline
+
+1. **Load audio**: Read input audio file
+2. **Preprocess**: Normalize and resample if needed
+3. **Enhancement**: Apply deep learning noise reduction
+4. **Postprocess**: Normalize output levels
+5. **Save**: Write enhanced audio to output file
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Voice Activity Detection" icon="waveform" href="/api/vad">
+    Detect speech after enhancement
+  </Card>
+  
+  <Card title="Speech Recognition" icon="microphone" href="/api/stt">
+    Transcribe enhanced audio
+  </Card>
+  
+  <Card title="Speaker Diarization" icon="users" href="/api/diarization">
+    Separate speakers after enhancement
+  </Card>
+  
+  <Card title="Source Separation" icon="layer-group" href="/api/separation">
+    Advanced audio separation
+  </Card>
+</CardGroup>

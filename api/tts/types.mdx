@@ -1,0 +1,447 @@
+---
+title: 'TTS Types'
+description: 'TypeScript type definitions for Text-to-Speech'
+---
+
+Complete TypeScript type definitions for the TTS API.
+
+## Audio Types
+
+### GeneratedAudio
+
+Generated audio data from TTS synthesis.
+
+```typescript
+interface GeneratedAudio {
+  samples: number[];
+  sampleRate: number;
+}
+```
+
+<ParamField path="samples" type="number[]">
+  Audio samples as an array of float values in range [-1.0, 1.0].
+  
+  This is raw PCM audio data that can be:
+  - Saved to a WAV file using `saveAudioToFile()`
+  - Played using an audio library
+  - Processed further for effects or analysis
+</ParamField>
+
+<ParamField path="sampleRate" type="number">
+  Sample rate of the generated audio in Hz.
+  
+  Common values:
+  - `16000` - 16 kHz (voice/telephony)
+  - `22050` - 22.05 kHz (common for TTS)
+  - `44100` - 44.1 kHz (CD quality)
+  - `48000` - 48 kHz (professional audio)
+</ParamField>
+
+**Example:**
+
+```typescript
+const audio: GeneratedAudio = await tts.generateSpeech('Hello');
+console.log(`Generated ${audio.samples.length} samples`);
+console.log(`Sample rate: ${audio.sampleRate}Hz`);
+console.log(`Duration: ${audio.samples.length / audio.sampleRate}s`);
+```
+
+---
+
+### GeneratedAudioWithTimestamps
+
+Generated audio with word-level timestamp metadata for subtitles.
+
+```typescript
+interface GeneratedAudioWithTimestamps extends GeneratedAudio {
+  subtitles: TtsSubtitleItem[];
+  estimated: boolean;
+}
+```
+
+<ParamField path="subtitles" type="TtsSubtitleItem[]">
+  Array of subtitle/timestamp entries for each word or token.
+  
+  See [TtsSubtitleItem](#ttssubtitleitem) below.
+</ParamField>
+
+<ParamField path="estimated" type="boolean">
+  Whether timestamps are estimated rather than model-provided.
+  
+  - `true` - Timestamps are estimated/calculated
+  - `false` - Timestamps come directly from the TTS model
+</ParamField>
+
+**Example:**
+
+```typescript
+const result = await tts.generateSpeechWithTimestamps('Hello world');
+
+console.log('Subtitles:');
+result.subtitles.forEach((item) => {
+  console.log(`  ${item.text}: ${item.start.toFixed(2)}s - ${item.end.toFixed(2)}s`);
+});
+
+if (result.estimated) {
+  console.log('Note: Timestamps are estimated');
+}
+```
+
+---
+
+### TtsSubtitleItem
+
+Subtitle/timestamp entry for a word or token in synthesized speech.
+
+```typescript
+interface TtsSubtitleItem {
+  text: string;
+  start: number;
+  end: number;
+}
+```
+
+<ParamField path="text" type="string">
+  Text token for this time range (word, phoneme, or character).
+</ParamField>
+
+<ParamField path="start" type="number">
+  Start time in seconds.
+</ParamField>
+
+<ParamField path="end" type="number">
+  End time in seconds.
+</ParamField>
+
+**Example:**
+
+```typescript
+const item: TtsSubtitleItem = {
+  text: 'Hello',
+  start: 0.0,
+  end: 0.5,
+};
+```
+
+---
+
+## Model Info Types
+
+### TTSModelInfo
+
+Information about TTS model capabilities.
+
+```typescript
+interface TTSModelInfo {
+  sampleRate: number;
+  numSpeakers: number;
+}
+```
+
+<ParamField path="sampleRate" type="number">
+  Sample rate that the model generates audio at (in Hz).
+</ParamField>
+
+<ParamField path="numSpeakers" type="number">
+  Number of speakers/voices available in the model.
+  
+  - `0` or `1` = Single-speaker model
+  - `> 1` = Multi-speaker model
+</ParamField>
+
+**Example:**
+
+```typescript
+const info = await tts.getModelInfo();
+
+if (info.numSpeakers > 1) {
+  console.log(`Multi-speaker model with ${info.numSpeakers} voices`);
+  // Can use sid parameter to select different speakers
+} else {
+  console.log('Single-speaker model');
+}
+```
+
+---
+
+## Engine Interfaces
+
+### TtsEngine
+
+Batch TTS engine interface returned by `createTTS()`.
+
+```typescript
+interface TtsEngine {
+  readonly instanceId: string;
+  
+  generateSpeech(
+    text: string,
+    options?: TtsGenerationOptions
+  ): Promise<GeneratedAudio>;
+  
+  generateSpeechWithTimestamps(
+    text: string,
+    options?: TtsGenerationOptions
+  ): Promise<GeneratedAudioWithTimestamps>;
+  
+  updateParams(options: TtsUpdateOptions): Promise<{
+    success: boolean;
+    detectedModels: Array<{ type: string; modelDir: string }>;
+  }>;
+  
+  getModelInfo(): Promise<TTSModelInfo>;
+  getSampleRate(): Promise<number>;
+  getNumSpeakers(): Promise<number>;
+  
+  destroy(): Promise<void>;
+}
+```
+
+See [`createTTS()` documentation](/api/tts/create-tts#ttsengine) for detailed method descriptions.
+
+---
+
+### StreamingTtsEngine
+
+Streaming TTS engine interface returned by `createStreamingTTS()`.
+
+```typescript
+interface StreamingTtsEngine {
+  readonly instanceId: string;
+  
+  generateSpeechStream(
+    text: string,
+    options: TtsGenerationOptions | undefined,
+    handlers: TtsStreamHandlers
+  ): Promise<TtsStreamController>;
+  
+  cancelSpeechStream(): Promise<void>;
+  
+  startPcmPlayer(sampleRate: number, channels: number): Promise<void>;
+  writePcmChunk(samples: number[]): Promise<void>;
+  stopPcmPlayer(): Promise<void>;
+  
+  getModelInfo(): Promise<TTSModelInfo>;
+  getSampleRate(): Promise<number>;
+  getNumSpeakers(): Promise<number>;
+  
+  destroy(): Promise<void>;
+}
+```
+
+See [`createStreamingTTS()` documentation](/api/tts/streaming-tts#streamingttsengine) for detailed method descriptions.
+
+---
+
+## Streaming Types
+
+### TtsStreamHandlers
+
+Event handlers for streaming TTS generation.
+
+```typescript
+interface TtsStreamHandlers {
+  onChunk?: (chunk: TtsStreamChunk) => void;
+  onEnd?: (event: TtsStreamEnd) => void;
+  onError?: (event: TtsStreamError) => void;
+}
+```
+
+<ParamField path="onChunk" type="(chunk: TtsStreamChunk) => void">
+  Called for each audio chunk as it's generated.
+</ParamField>
+
+<ParamField path="onEnd" type="(event: TtsStreamEnd) => void">
+  Called when generation completes or is cancelled.
+</ParamField>
+
+<ParamField path="onError" type="(event: TtsStreamError) => void">
+  Called when an error occurs during generation.
+</ParamField>
+
+---
+
+### TtsStreamChunk
+
+Audio chunk received during streaming generation.
+
+```typescript
+interface TtsStreamChunk {
+  instanceId?: string;
+  requestId?: string;
+  samples: number[];
+  sampleRate: number;
+  progress: number;
+  isFinal: boolean;
+}
+```
+
+<ParamField path="instanceId" type="string">
+  Instance ID of the TTS engine that generated this chunk.
+</ParamField>
+
+<ParamField path="requestId" type="string">
+  Request ID for this specific generation (distinguishes concurrent streams).
+</ParamField>
+
+<ParamField path="samples" type="number[]">
+  Float PCM audio samples in range [-1.0, 1.0].
+</ParamField>
+
+<ParamField path="sampleRate" type="number">
+  Sample rate of the audio in Hz.
+</ParamField>
+
+<ParamField path="progress" type="number">
+  Generation progress as a float between 0.0 and 1.0.
+</ParamField>
+
+<ParamField path="isFinal" type="boolean">
+  `true` if this is the last chunk in the stream.
+</ParamField>
+
+---
+
+### TtsStreamEnd
+
+Event emitted when streaming generation ends.
+
+```typescript
+interface TtsStreamEnd {
+  instanceId?: string;
+  requestId?: string;
+  cancelled: boolean;
+}
+```
+
+<ParamField path="instanceId" type="string">
+  Instance ID of the TTS engine.
+</ParamField>
+
+<ParamField path="requestId" type="string">
+  Request ID for this generation.
+</ParamField>
+
+<ParamField path="cancelled" type="boolean">
+  `true` if generation was cancelled, `false` if it completed normally.
+</ParamField>
+
+---
+
+### TtsStreamError
+
+Event emitted when an error occurs during streaming.
+
+```typescript
+interface TtsStreamError {
+  instanceId?: string;
+  requestId?: string;
+  message: string;
+}
+```
+
+<ParamField path="instanceId" type="string">
+  Instance ID of the TTS engine.
+</ParamField>
+
+<ParamField path="requestId" type="string">
+  Request ID for this generation.
+</ParamField>
+
+<ParamField path="message" type="string">
+  Error message describing what went wrong.
+</ParamField>
+
+---
+
+### TtsStreamController
+
+Controller returned by `generateSpeechStream()` for managing the stream.
+
+```typescript
+interface TtsStreamController {
+  cancel(): Promise<void>;
+  unsubscribe(): void;
+}
+```
+
+<ParamField path="cancel" type="() => Promise<void>">
+  Cancels the ongoing TTS generation.
+</ParamField>
+
+<ParamField path="unsubscribe" type="() => void">
+  Removes event listeners. Called automatically on end/error, or can be called manually.
+</ParamField>
+
+---
+
+## Configuration Types
+
+See the [Configuration](/api/tts/configuration) page for detailed documentation of:
+
+- `TTSInitializeOptions`
+- `TtsModelOptions`
+- `TtsVitsModelOptions`
+- `TtsMatchaModelOptions`
+- `TtsKokoroModelOptions`
+- `TtsKittenModelOptions`
+- `TtsPocketModelOptions`
+- `TtsUpdateOptions`
+- `TtsGenerationOptions`
+- `TTSModelType`
+
+---
+
+## Type Imports
+
+### Import all TTS types
+
+```typescript
+import type {
+  // Engine interfaces
+  TtsEngine,
+  StreamingTtsEngine,
+  
+  // Configuration
+  TTSInitializeOptions,
+  TTSModelType,
+  TtsModelOptions,
+  TtsVitsModelOptions,
+  TtsMatchaModelOptions,
+  TtsKokoroModelOptions,
+  TtsKittenModelOptions,
+  TtsPocketModelOptions,
+  TtsUpdateOptions,
+  TtsGenerationOptions,
+  
+  // Audio types
+  GeneratedAudio,
+  GeneratedAudioWithTimestamps,
+  TtsSubtitleItem,
+  TTSModelInfo,
+  
+  // Streaming types
+  TtsStreamController,
+  TtsStreamHandlers,
+  TtsStreamChunk,
+  TtsStreamEnd,
+  TtsStreamError,
+} from 'react-native-sherpa-onnx';
+```
+
+### Import runtime constants
+
+```typescript
+import { TTS_MODEL_TYPES } from 'react-native-sherpa-onnx';
+
+console.log('Supported model types:', TTS_MODEL_TYPES);
+// ['vits', 'matcha', 'kokoro', 'kitten', 'pocket', 'zipvoice', 'auto']
+```
+
+---
+
+## See Also
+
+- [createTTS()](/api/tts/create-tts) - Batch TTS engine
+- [createStreamingTTS()](/api/tts/streaming-tts) - Streaming TTS engine
+- [Configuration](/api/tts/configuration) - Detailed configuration options

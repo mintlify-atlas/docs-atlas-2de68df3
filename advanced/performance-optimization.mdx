@@ -1,0 +1,286 @@
+---
+title: Performance Optimization
+description: Tips for optimizing inference performance with model quantization, execution providers, and threading
+---
+
+This guide covers techniques to improve inference performance for speech recognition (STT) and text-to-speech (TTS) in React Native Sherpa-ONNX.
+
+## Model Quantization
+
+### Choose quantized models
+
+Quantized models (e.g., INT8, INT16) offer faster inference and smaller memory footprint compared to full-precision (FP32) models:
+
+- **INT8 models**: Best balance of speed and quality for most mobile devices
+- **FP16 models**: Good performance on devices with FP16 hardware support
+- **FP32 models**: Highest quality but slower and larger
+
+<Tip>
+For devices with **less than 8 GB RAM**, prefer INT8 quantized models. For example, use `sherpa-onnx-zipvoice-distill-int8-zh-en-emilia` (~104 MB) instead of the full FP32 Zipvoice model (~605 MB).
+</Tip>
+
+### Model size vs. quality tradeoff
+
+Smaller models are faster but may have slightly lower accuracy:
+
+```tsx
+// Example: Choosing between model variants
+const modelConfig = {
+  // For high-end devices (8GB+ RAM)
+  highEnd: 'sherpa-onnx-zipvoice-zh-en-emilia',  // ~605 MB, best quality
+  
+  // For mid-range devices (4-8GB RAM)
+  midRange: 'sherpa-onnx-streaming-zipformer-en-2023-06-26',  // ~67 MB
+  
+  // For low-end devices (<4GB RAM)
+  lowEnd: 'sherpa-onnx-zipvoice-distill-int8-zh-en-emilia',  // ~104 MB
+};
+```
+
+## Execution Providers
+
+### Hardware acceleration
+
+Use execution providers to leverage dedicated hardware accelerators:
+
+| Provider | Platform | Hardware | Use Case |
+|----------|----------|----------|----------|
+| **QNN** | Android | Qualcomm NPU | Best performance on Qualcomm devices |
+| **NNAPI** | Android | GPU/DSP/NPU | General Android hardware acceleration |
+| **XNNPACK** | Android/iOS | CPU-optimized | CPU inference optimization |
+| **Core ML** | iOS | Apple Neural Engine | Best performance on iOS devices |
+
+### Check provider availability
+
+Always check if a provider is available before using it:
+
+```tsx
+import { getQnnSupport, getNnapiSupport, getXnnpackSupport } from 'react-native-sherpa-onnx';
+
+// Check QNN support
+const qnnSupport = await getQnnSupport();
+if (qnnSupport.canInit) {
+  // Use QNN provider
+  const recognizer = await createStreamingStt({
+    modelPath: { type: 'asset', path: 'models/my-model' },
+    provider: 'qnn',
+  });
+}
+
+// Fallback to NNAPI or CPU
+const nnapiSupport = await getNnapiSupport();
+const provider = nnapiSupport.canInit ? 'nnapi' : 'cpu';
+```
+
+### Provider selection strategy
+
+```tsx
+async function selectBestProvider(): Promise<'qnn' | 'nnapi' | 'xnnpack' | 'cpu'> {
+  // Try QNN first (best for Qualcomm)
+  const qnn = await getQnnSupport();
+  if (qnn.canInit) return 'qnn';
+  
+  // Try NNAPI (GPU/DSP/NPU)
+  const nnapi = await getNnapiSupport();
+  if (nnapi.canInit) return 'nnapi';
+  
+  // Try XNNPACK (CPU-optimized)
+  const xnnpack = await getXnnpackSupport();
+  if (xnnpack.canInit) return 'xnnpack';
+  
+  // Fallback to CPU
+  return 'cpu';
+}
+
+const provider = await selectBestProvider();
+const recognizer = await createStreamingStt({
+  modelPath: { type: 'asset', path: 'models/my-model' },
+  provider,
+});
+```
+
+<Note>
+See the [Execution Providers](/features/execution-providers) guide for detailed information on adding QNN runtime libraries and checking provider support.
+</Note>
+
+## Threading
+
+### Configure thread count
+
+Adjust the number of threads based on device capabilities:
+
+```tsx
+import { createStreamingStt } from 'react-native-sherpa-onnx/stt';
+
+const recognizer = await createStreamingStt({
+  modelPath: { type: 'asset', path: 'models/my-model' },
+  numThreads: 4,  // Adjust based on device cores
+});
+```
+
+### Thread count guidelines
+
+- **Low-end devices** (2-4 cores): `numThreads: 2`
+- **Mid-range devices** (4-6 cores): `numThreads: 4`
+- **High-end devices** (8+ cores): `numThreads: 4-6`
+
+<Warning>
+Setting too many threads can hurt performance due to overhead. Start with 2-4 threads and test on target devices.
+</Warning>
+
+## Memory Management
+
+### Check available memory
+
+The SDK automatically checks memory before loading large models (e.g., Zipvoice):
+
+```tsx
+try {
+  const tts = await createTTS({
+    modelPath: { type: 'asset', path: 'models/zipvoice-full' },
+  });
+} catch (error) {
+  if (error.message.includes('Not enough free memory')) {
+    // Fallback to smaller model
+    const tts = await createTTS({
+      modelPath: { type: 'asset', path: 'models/zipvoice-int8' },
+    });
+  }
+}
+```
+
+### Release resources
+
+Release recognizers and TTS instances when not needed:
+
+```tsx
+const recognizer = await createStreamingStt({ /* ... */ });
+
+// Use recognizer...
+
+// Clean up when done
+await recognizer.release();
+```
+
+## Batch Processing
+
+### Process audio in optimal chunks
+
+For streaming STT, use appropriate buffer sizes:
+
+```tsx
+// Optimal chunk size: 0.1-0.2 seconds of audio
+const sampleRate = 16000;
+const chunkDuration = 0.1; // 100ms
+const chunkSize = sampleRate * chunkDuration; // 1600 samples
+
+// Process audio in chunks
+for (let i = 0; i < audioData.length; i += chunkSize) {
+  const chunk = audioData.slice(i, i + chunkSize);
+  recognizer.acceptWaveform(chunk, sampleRate);
+}
+```
+
+## Warm-up Inference
+
+### Pre-initialize models
+
+Run a warm-up inference to initialize the model before actual use:
+
+```tsx
+const recognizer = await createStreamingStt({ /* ... */ });
+
+// Warm-up with silent audio
+const silentAudio = new Float32Array(1600).fill(0);
+recognizer.acceptWaveform(silentAudio, 16000);
+recognizer.getResult(); // Discard result
+
+// Now ready for real inference
+```
+
+## Platform-Specific Optimizations
+
+### Android
+
+1. **Use QNN on Qualcomm devices**:
+   ```tsx
+   const qnn = await getQnnSupport();
+   const provider = qnn.canInit ? 'qnn' : 'cpu';
+   ```
+
+2. **Enable NNAPI for other devices**:
+   ```tsx
+   const nnapi = await getNnapiSupport();
+   const provider = nnapi.canInit ? 'nnapi' : 'cpu';
+   ```
+
+3. **Use bundled models** to avoid file I/O overhead:
+   ```tsx
+   modelPath: { type: 'asset', path: 'models/my-model' }
+   ```
+
+### iOS
+
+1. **Use Core ML** when available:
+   ```tsx
+   const coreml = await getCoreMlSupport();
+   if (coreml.hasAccelerator) {
+     // Apple Neural Engine available
+     const recognizer = await createStreamingStt({
+       modelPath: { type: 'asset', path: 'models/my-model' },
+       provider: 'coreml',
+     });
+   }
+   ```
+
+2. **Prefer XCFramework** for faster loading times
+
+## Monitoring Performance
+
+### Measure inference time
+
+```tsx
+const start = Date.now();
+await recognizer.acceptWaveform(audioData, sampleRate);
+const result = await recognizer.getResult();
+const duration = Date.now() - start;
+
+console.log(`Inference took ${duration}ms`);
+```
+
+### Track real-time factor (RTF)
+
+```tsx
+const audioLengthMs = (audioData.length / sampleRate) * 1000;
+const rtf = duration / audioLengthMs;
+
+if (rtf < 1.0) {
+  console.log(`Real-time performance achieved (RTF: ${rtf.toFixed(2)})`);
+} else {
+  console.log(`Slower than real-time (RTF: ${rtf.toFixed(2)})`);
+}
+```
+
+## Best Practices Summary
+
+<Steps>
+  <Step title="Choose the right model">
+    Select quantized models (INT8) for mobile devices and balance size vs. quality
+  </Step>
+  
+  <Step title="Enable hardware acceleration">
+    Use execution providers (QNN, NNAPI, Core ML) based on platform and device
+  </Step>
+  
+  <Step title="Optimize threading">
+    Set appropriate thread count (2-4 for most devices)
+  </Step>
+  
+  <Step title="Manage memory">
+    Release resources when done and use smaller models on low-RAM devices
+  </Step>
+  
+  <Step title="Test on target devices">
+    Always measure performance on actual target devices
+  </Step>
+</Steps>

@@ -1,0 +1,789 @@
+---
+title: Download Manager API
+description: Download and manage Sherpa-ONNX models from GitHub releases
+---
+
+The Download Manager provides a complete solution for downloading, validating, caching, and managing Sherpa-ONNX models from official GitHub releases. It supports automatic retries, checksum validation, progress tracking, and LRU cache management.
+
+## Core Functions
+
+### listModelsByCategory()
+
+List available models for a category from local cache.
+
+```typescript
+function listModelsByCategory<T extends ModelMetaBase>(
+  category: ModelCategory
+): Promise<T[]>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category: `ModelCategory.Tts`, `ModelCategory.Stt`, `ModelCategory.Vad`, `ModelCategory.Diarization`, `ModelCategory.Enhancement`, or `ModelCategory.Separation`
+</ParamField>
+
+<ResponseField name="models" type="Promise<T[]>">
+  Array of model metadata from cache (returns empty array if cache is empty)
+</ResponseField>
+
+**Example:**
+```typescript
+import { listModelsByCategory, ModelCategory } from 'react-native-sherpa-onnx';
+
+const ttsModels = await listModelsByCategory(ModelCategory.Tts);
+console.log('Cached TTS models:', ttsModels);
+```
+
+---
+
+### refreshModelsByCategory()
+
+Fetch the latest models from GitHub releases with caching and retry logic.
+
+```typescript
+function refreshModelsByCategory<T extends ModelMetaBase>(
+  category: ModelCategory,
+  options?: {
+    forceRefresh?: boolean;
+    cacheTtlMinutes?: number;
+    maxRetries?: number;
+    signal?: AbortSignal;
+  }
+): Promise<T[]>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category to refresh
+</ParamField>
+
+<ParamField path="options.forceRefresh" type="boolean" default="false">
+  Skip cache and force fetch from remote
+</ParamField>
+
+<ParamField path="options.cacheTtlMinutes" type="number" default="1440">
+  Cache time-to-live in minutes (default: 24 hours)
+</ParamField>
+
+<ParamField path="options.maxRetries" type="number" default="3">
+  Maximum number of retry attempts
+</ParamField>
+
+<ParamField path="options.signal" type="AbortSignal">
+  Optional AbortSignal for cancellation
+</ParamField>
+
+<ResponseField name="models" type="Promise<T[]>">
+  Array of model metadata with SHA256 checksums attached
+</ResponseField>
+
+**Example:**
+```typescript
+import { refreshModelsByCategory, ModelCategory } from 'react-native-sherpa-onnx';
+
+// Fetch latest TTS models
+const models = await refreshModelsByCategory(ModelCategory.Tts);
+console.log('Available models:', models);
+
+// Force refresh, ignore cache
+const freshModels = await refreshModelsByCategory(ModelCategory.Tts, {
+  forceRefresh: true,
+});
+
+// With cancellation support
+const abortController = new AbortController();
+try {
+  const models = await refreshModelsByCategory(ModelCategory.Tts, {
+    signal: abortController.signal,
+  });
+} catch (error) {
+  if (error.name === 'AbortError') {
+    console.log('Refresh cancelled');
+  }
+}
+
+// Cancel the request
+abortController.abort();
+```
+
+---
+
+### downloadModelByCategory()
+
+Download and extract a model with progress tracking, checksum validation, and automatic retries.
+
+```typescript
+function downloadModelByCategory<T extends ModelMetaBase>(
+  category: ModelCategory,
+  id: string,
+  options?: {
+    onProgress?: (progress: DownloadProgress) => void;
+    overwrite?: boolean;
+    signal?: AbortSignal;
+    maxRetries?: number;
+    onChecksumIssue?: (issue: ChecksumIssue) => Promise<boolean>;
+  }
+): Promise<DownloadResult>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  Model ID (e.g., `"sherpa-onnx-vits-piper-en_US-amy-low"`)
+</ParamField>
+
+<ParamField path="options.onProgress" type="function">
+  Progress callback receiving `DownloadProgress` updates
+</ParamField>
+
+<ParamField path="options.overwrite" type="boolean" default="false">
+  Delete existing model before downloading
+</ParamField>
+
+<ParamField path="options.signal" type="AbortSignal">
+  AbortSignal for cancellation support
+</ParamField>
+
+<ParamField path="options.maxRetries" type="number" default="2">
+  Maximum download retry attempts
+</ParamField>
+
+<ParamField path="options.onChecksumIssue" type="function">
+  Custom checksum validation handler (returns `true` to keep file, `false` to delete)
+</ParamField>
+
+<ResponseField name="result" type="Promise<DownloadResult>">
+  Object with `modelId` and `localPath` of the downloaded model
+</ResponseField>
+
+**Example:**
+```typescript
+import { 
+  downloadModelByCategory, 
+  ModelCategory,
+  type DownloadProgress 
+} from 'react-native-sherpa-onnx';
+
+const modelId = 'sherpa-onnx-vits-piper-en_US-amy-low';
+
+try {
+  const result = await downloadModelByCategory(
+    ModelCategory.Tts,
+    modelId,
+    {
+      onProgress: (progress: DownloadProgress) => {
+        console.log(
+          `${progress.phase}: ${progress.percent.toFixed(1)}% ` +
+          `(${(progress.bytesDownloaded / 1024 / 1024).toFixed(1)} MB / ` +
+          `${(progress.totalBytes / 1024 / 1024).toFixed(1)} MB)`
+        );
+        if (progress.eta) {
+          console.log(`ETA: ${Math.round(progress.eta)}s`);
+        }
+      },
+    }
+  );
+  
+  console.log('Model downloaded to:', result.localPath);
+} catch (error) {
+  console.error('Download failed:', error);
+}
+```
+
+**With cancellation:**
+```typescript
+const abortController = new AbortController();
+
+const downloadPromise = downloadModelByCategory(
+  ModelCategory.Tts,
+  modelId,
+  {
+    signal: abortController.signal,
+    onProgress: (progress) => {
+      console.log(`Progress: ${progress.percent.toFixed(1)}%`);
+    },
+  }
+);
+
+// Cancel after 5 seconds
+setTimeout(() => abortController.abort(), 5000);
+
+try {
+  await downloadPromise;
+} catch (error) {
+  if (error.name === 'AbortError') {
+    console.log('Download cancelled');
+  }
+}
+```
+
+---
+
+### getLocalModelPathByCategory()
+
+Get the local filesystem path of a downloaded model.
+
+```typescript
+function getLocalModelPathByCategory(
+  category: ModelCategory,
+  id: string
+): Promise<string | null>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  Model ID
+</ParamField>
+
+<ResponseField name="path" type="Promise<string | null>">
+  Absolute path to model directory, or `null` if not downloaded
+</ResponseField>
+
+<Note>
+  This function automatically updates the model's `lastUsed` timestamp for LRU cache management.
+</Note>
+
+**Example:**
+```typescript
+import { getLocalModelPathByCategory, ModelCategory, createTTS } from 'react-native-sherpa-onnx';
+
+const modelId = 'sherpa-onnx-vits-piper-en_US-amy-low';
+const localPath = await getLocalModelPathByCategory(ModelCategory.Tts, modelId);
+
+if (localPath) {
+  const tts = await createTTS({
+    modelPath: { type: 'file', path: localPath },
+    modelType: 'vits',
+  });
+  console.log('TTS initialized with downloaded model');
+} else {
+  console.log('Model not downloaded');
+}
+```
+
+---
+
+### isModelDownloadedByCategory()
+
+Check if a model is fully downloaded and ready.
+
+```typescript
+function isModelDownloadedByCategory(
+  category: ModelCategory,
+  id: string
+): Promise<boolean>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  Model ID
+</ParamField>
+
+<ResponseField name="downloaded" type="Promise<boolean>">
+  `true` if model is fully downloaded and extracted, `false` otherwise
+</ResponseField>
+
+**Example:**
+```typescript
+import { isModelDownloadedByCategory, ModelCategory } from 'react-native-sherpa-onnx';
+
+const isDownloaded = await isModelDownloadedByCategory(
+  ModelCategory.Tts,
+  'sherpa-onnx-vits-piper-en_US-amy-low'
+);
+
+if (isDownloaded) {
+  console.log('Model is ready to use');
+} else {
+  console.log('Model needs to be downloaded');
+}
+```
+
+---
+
+### listDownloadedModelsByCategory()
+
+List all downloaded models for a category.
+
+```typescript
+function listDownloadedModelsByCategory<T extends ModelMetaBase>(
+  category: ModelCategory
+): Promise<T[]>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ResponseField name="models" type="Promise<T[]>">
+  Array of metadata for downloaded models
+</ResponseField>
+
+**Example:**
+```typescript
+import { listDownloadedModelsByCategory, ModelCategory } from 'react-native-sherpa-onnx';
+
+const downloadedTtsModels = await listDownloadedModelsByCategory(ModelCategory.Tts);
+console.log('Downloaded TTS models:', downloadedTtsModels);
+
+for (const model of downloadedTtsModels) {
+  console.log(`- ${model.displayName} (${(model.bytes / 1024 / 1024).toFixed(1)} MB)`);
+}
+```
+
+---
+
+### deleteModelByCategory()
+
+Delete a downloaded model and its archive.
+
+```typescript
+function deleteModelByCategory(
+  category: ModelCategory,
+  id: string
+): Promise<void>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  Model ID to delete
+</ParamField>
+
+<ResponseField name="void" type="Promise<void>">
+  Resolves when deletion is complete
+</ResponseField>
+
+**Example:**
+```typescript
+import { deleteModelByCategory, ModelCategory } from 'react-native-sherpa-onnx';
+
+try {
+  await deleteModelByCategory(ModelCategory.Tts, 'sherpa-onnx-vits-piper-en_US-amy-low');
+  console.log('Model deleted successfully');
+} catch (error) {
+  console.error('Failed to delete model:', error);
+}
+```
+
+---
+
+## Cache Management
+
+### listDownloadedModelsWithMetadata()
+
+List downloaded models with LRU cache metadata.
+
+```typescript
+function listDownloadedModelsWithMetadata<T extends ModelMetaBase>(
+  category: ModelCategory
+): Promise<ModelWithMetadata<T>[]>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ResponseField name="models" type="Promise<ModelWithMetadata<T>[]>">
+  Array of models with metadata:
+  - `model`: Model metadata
+  - `downloadedAt`: ISO timestamp of download
+  - `lastUsed`: ISO timestamp of last access (or `null`)
+  - `sizeOnDisk`: Size in bytes
+</ResponseField>
+
+**Example:**
+```typescript
+import { listDownloadedModelsWithMetadata, ModelCategory } from 'react-native-sherpa-onnx';
+
+const models = await listDownloadedModelsWithMetadata(ModelCategory.Tts);
+
+for (const { model, downloadedAt, lastUsed, sizeOnDisk } of models) {
+  console.log(`${model.displayName}:`);
+  console.log(`  Downloaded: ${new Date(downloadedAt).toLocaleDateString()}`);
+  console.log(`  Last used: ${lastUsed ? new Date(lastUsed).toLocaleDateString() : 'Never'}`);
+  console.log(`  Size: ${((sizeOnDisk ?? 0) / 1024 / 1024).toFixed(1)} MB`);
+}
+```
+
+---
+
+### cleanupLeastRecentlyUsed()
+
+Delete least recently used models to free disk space.
+
+```typescript
+function cleanupLeastRecentlyUsed(
+  category: ModelCategory,
+  options?: {
+    targetBytes?: number;
+    maxModelsToDelete?: number;
+    keepCount?: number;
+  }
+): Promise<string[]>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ParamField path="options.targetBytes" type="number">
+  Target bytes to free (stops when reached)
+</ParamField>
+
+<ParamField path="options.maxModelsToDelete" type="number">
+  Maximum number of models to delete
+</ParamField>
+
+<ParamField path="options.keepCount" type="number" default="1">
+  Minimum number of models to keep
+</ParamField>
+
+<ResponseField name="deletedIds" type="Promise<string[]>">
+  Array of deleted model IDs
+</ResponseField>
+
+**Example:**
+```typescript
+import { cleanupLeastRecentlyUsed, ModelCategory } from 'react-native-sherpa-onnx';
+
+// Free at least 500 MB, keep at least 2 models
+const deletedIds = await cleanupLeastRecentlyUsed(ModelCategory.Tts, {
+  targetBytes: 500 * 1024 * 1024,
+  keepCount: 2,
+});
+
+console.log('Deleted models:', deletedIds);
+
+// Delete up to 3 oldest models
+const deleted = await cleanupLeastRecentlyUsed(ModelCategory.Tts, {
+  maxModelsToDelete: 3,
+  keepCount: 1,
+});
+```
+
+---
+
+### updateModelLastUsed()
+
+Manually update a model's last used timestamp.
+
+```typescript
+function updateModelLastUsed(
+  category: ModelCategory,
+  id: string
+): Promise<void>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  Model ID
+</ParamField>
+
+<ResponseField name="void" type="Promise<void>">
+  Resolves when timestamp is updated
+</ResponseField>
+
+<Note>
+  This is called automatically by `getLocalModelPathByCategory()`. Manual use is typically not needed.
+</Note>
+
+---
+
+### clearModelCacheByCategory()
+
+Clear the in-memory and on-disk cache for a category.
+
+```typescript
+function clearModelCacheByCategory(
+  category: ModelCategory
+): Promise<void>
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category
+</ParamField>
+
+<ResponseField name="void" type="Promise<void>">
+  Resolves when cache is cleared
+</ResponseField>
+
+**Example:**
+```typescript
+import { clearModelCacheByCategory, ModelCategory } from 'react-native-sherpa-onnx';
+
+// Clear TTS models cache (forces refresh on next call)
+await clearModelCacheByCategory(ModelCategory.Tts);
+```
+
+---
+
+## Event Subscriptions
+
+### subscribeDownloadProgress()
+
+Subscribe to download progress events for all models.
+
+```typescript
+function subscribeDownloadProgress(
+  listener: DownloadProgressListener
+): () => void
+```
+
+<ParamField path="listener" type="DownloadProgressListener" required>
+  Callback function: `(category, modelId, progress) => void`
+</ParamField>
+
+<ResponseField name="unsubscribe" type="() => void">
+  Function to unsubscribe the listener
+</ResponseField>
+
+**Example:**
+```typescript
+import { subscribeDownloadProgress, ModelCategory } from 'react-native-sherpa-onnx';
+
+const unsubscribe = subscribeDownloadProgress((category, modelId, progress) => {
+  console.log(`[${category}] ${modelId}: ${progress.percent.toFixed(1)}% (${progress.phase})`);
+});
+
+// Later: unsubscribe
+unsubscribe();
+```
+
+---
+
+### subscribeModelsListUpdated()
+
+Subscribe to model list update events.
+
+```typescript
+function subscribeModelsListUpdated(
+  listener: ModelsListUpdatedListener
+): () => void
+```
+
+<ParamField path="listener" type="ModelsListUpdatedListener" required>
+  Callback function: `(category, models) => void`
+</ParamField>
+
+<ResponseField name="unsubscribe" type="() => void">
+  Function to unsubscribe the listener
+</ResponseField>
+
+**Example:**
+```typescript
+import { subscribeModelsListUpdated } from 'react-native-sherpa-onnx';
+
+const unsubscribe = subscribeModelsListUpdated((category, models) => {
+  console.log(`[${category}] Model list updated: ${models.length} models`);
+});
+
+// Later: unsubscribe
+unsubscribe();
+```
+
+---
+
+## Validation Functions
+
+### validateChecksum()
+
+Validate a file's SHA256 checksum.
+
+```typescript
+function validateChecksum(
+  filePath: string,
+  expectedChecksum: string,
+  onProgress?: (bytesProcessed: number, totalBytes: number, percent: number) => void
+): Promise<ValidationResult>
+```
+
+<ParamField path="filePath" type="string" required>
+  Absolute path to file
+</ParamField>
+
+<ParamField path="expectedChecksum" type="string" required>
+  Expected SHA256 hash (hex string)
+</ParamField>
+
+<ParamField path="onProgress" type="function">
+  Optional progress callback
+</ParamField>
+
+<ResponseField name="result" type="Promise<ValidationResult>">
+  Validation result with `success`, `error`, and `message` properties
+</ResponseField>
+
+---
+
+### calculateFileChecksum()
+
+Calculate SHA256 checksum of a file.
+
+```typescript
+function calculateFileChecksum(
+  filePath: string,
+  onProgress?: (bytesProcessed: number, totalBytes: number, percent: number) => void
+): Promise<string>
+```
+
+<ParamField path="filePath" type="string" required>
+  Absolute path to file
+</ParamField>
+
+<ParamField path="onProgress" type="function">
+  Optional progress callback
+</ParamField>
+
+<ResponseField name="checksum" type="Promise<string>">
+  SHA256 hash as lowercase hex string
+</ResponseField>
+
+---
+
+## Type Definitions
+
+### ModelCategory
+
+```typescript
+enum ModelCategory {
+  Tts = 'tts',
+  Stt = 'stt',
+  Vad = 'vad',
+  Diarization = 'diarization',
+  Enhancement = 'enhancement',
+  Separation = 'separation',
+}
+```
+
+### TtsModelMeta
+
+```typescript
+type TtsModelMeta = {
+  id: string;                    // Model ID (e.g., "sherpa-onnx-vits-piper-en_US-amy-low")
+  displayName: string;           // Human-readable name
+  downloadUrl: string;           // Download URL
+  archiveExt: 'tar.bz2' | 'onnx'; // Archive type
+  bytes: number;                 // Archive size in bytes
+  sha256?: string;               // SHA256 checksum
+  category: ModelCategory.Tts;
+  type: TtsModelType;            // Model type (vits, matcha, kokoro, etc.)
+  languages: string[];           // Supported language codes
+  quantization: Quantization;    // Model quantization level
+  sizeTier: SizeTier;            // Model size tier
+};
+```
+
+### DownloadProgress
+
+```typescript
+type DownloadProgress = {
+  bytesDownloaded: number;
+  totalBytes: number;
+  percent: number;                            // 0-100
+  phase?: 'downloading' | 'extracting';
+  speed?: number;                             // Bytes per second
+  eta?: number;                               // Estimated seconds remaining
+};
+```
+
+### DownloadResult
+
+```typescript
+type DownloadResult = {
+  modelId: string;
+  localPath: string;  // Absolute path to model directory
+};
+```
+
+### ModelWithMetadata
+
+```typescript
+type ModelWithMetadata<T extends ModelMetaBase = ModelMetaBase> = {
+  model: T;
+  downloadedAt: string;  // ISO timestamp
+  lastUsed: string | null;  // ISO timestamp or null
+  sizeOnDisk?: number;      // Bytes
+};
+```
+
+---
+
+## Best Practices
+
+1. **Always refresh before showing model list:**
+   ```typescript
+   const models = await refreshModelsByCategory(ModelCategory.Tts);
+   ```
+
+2. **Handle download errors gracefully:**
+   ```typescript
+   try {
+     await downloadModelByCategory(ModelCategory.Tts, modelId, { onProgress });
+   } catch (error) {
+     if (error.name === 'AbortError') {
+       console.log('Download cancelled by user');
+     } else {
+       Alert.alert('Download Failed', error.message);
+     }
+   }
+   ```
+
+3. **Implement LRU cleanup when disk space is low:**
+   ```typescript
+   import { checkDiskSpace } from 'react-native-sherpa-onnx';
+   
+   const diskSpace = await checkDiskSpace(modelBytes);
+   if (!diskSpace.success) {
+     await cleanupLeastRecentlyUsed(ModelCategory.Tts, {
+       targetBytes: modelBytes,
+       keepCount: 2,
+     });
+   }
+   ```
+
+4. **Use subscriptions for global download tracking:**
+   ```typescript
+   useEffect(() => {
+     const unsubscribe = subscribeDownloadProgress((category, modelId, progress) => {
+       setDownloadState({ category, modelId, progress });
+     });
+     return unsubscribe;
+   }, []);
+   ```
+
+5. **Show download progress UI:**
+   ```typescript
+   const [progress, setProgress] = useState<DownloadProgress | null>(null);
+   
+   await downloadModelByCategory(ModelCategory.Tts, modelId, {
+     onProgress: setProgress,
+   });
+   
+   // In your component:
+   {progress && (
+     <ProgressBar
+       progress={progress.percent / 100}
+       text={`${progress.phase}: ${progress.percent.toFixed(1)}%`}
+     />
+   )}
+   ```
+
+---
+
+## Related APIs
+
+- [Model Paths](/api/utils/model-paths) - Path configuration for loaded models
+- [TTS API](/api/tts/engine) - Use downloaded models for text-to-speech
+- [STT API](/api/stt/engine) - Use downloaded models for speech recognition

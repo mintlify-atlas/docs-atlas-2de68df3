@@ -1,0 +1,477 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for React Native Sherpa-ONNX
+---
+
+This guide covers common issues you might encounter when using React Native Sherpa-ONNX and their solutions.
+
+## Model Setup Issues
+
+### Model directory does not exist
+
+**Symptoms**: Error message "Model directory does not exist" when initializing STT or TTS.
+
+**Solutions**:
+
+<AccordionGroup>
+  <Accordion title="Bundled assets">
+    - Check the asset path (e.g. `models/your-folder`) and that the folder is actually in the app's assets
+    - **Android**: Ensure folder is in `assets/models/`
+    - **iOS**: Verify folder reference in the app target, Copy Bundle Resources
+    - Rebuild the app after adding models
+  </Accordion>
+  
+  <Accordion title="Play Asset Delivery (PAD)">
+    - Ensure the app was installed with the asset pack (e.g. via `installDebugWithPad` or the release AAB)
+    - Check if `getAssetPackPath()` returns `null`
+    - If `null`, use a fallback path (e.g. `DocumentDirectoryPath`) and put models there
+  </Accordion>
+  
+  <Accordion title="File system path">
+    - Ensure the path is absolute and the folder exists on disk
+    - Verify the folder was created after download or extraction
+    - Check file permissions
+  </Accordion>
+</AccordionGroup>
+
+### Cannot auto-detect model type
+
+**Symptoms**: Initialization fails with "Cannot auto-detect model type" error.
+
+**Solutions**:
+
+1. **Verify required files**: Ensure the folder contains the required files for at least one model type:
+   - **Whisper**: `encoder.onnx`, `decoder.onnx`, `tokens.txt`
+   - **Transducer**: `encoder.onnx`, `decoder.onnx`, `joiner.onnx`, `tokens.txt`
+   - **VITS**: `model.onnx`, `tokens.txt`, `lexicon.txt`
+   - **Zipvoice**: `encoder.onnx`, `decoder.onnx`, `vocoder.onnx` (vocos/hifigan)
+
+2. **File names are case-sensitive**: Ensure exact file names match requirements
+
+3. **Use explicit model type** if detection fails:
+   ```tsx
+   const recognizer = await createStreamingStt({
+     modelPath: { type: 'asset', path: 'models/my-model' },
+     modelType: 'whisper', // Explicit type
+   });
+   ```
+
+### getAssetPackPath() returns null
+
+**Symptoms**: Cannot access models from Play Asset Delivery.
+
+**Solutions**:
+
+- The app was not installed from a bundle that includes the asset pack
+- Install via the AAB: `yarn android:pad` or use bundletool
+- Plain `installDebug` does not include the pack
+- Use on-demand download if pack is not installed:
+  ```tsx
+  const packPath = await getAssetPackPath('sherpa_models');
+  if (!packPath) {
+    // Download models or use fallback
+    await downloadModelByCategory('stt', 'whisper-tiny');
+  }
+  ```
+
+## Audio Format Issues
+
+### STT: Audio format not supported
+
+**Symptoms**: Recognition fails or produces incorrect results.
+
+**Requirements**: STT expects WAV, 16 kHz, mono, 16-bit PCM
+
+**Solutions**:
+
+1. **Convert audio files** using FFmpeg:
+   ```bash
+   ffmpeg -i input.mp3 -ar 16000 -ac 1 -sample_fmt s16 output.wav
+   ```
+
+2. **Use built-in conversion** (if FFmpeg not disabled):
+   ```tsx
+   import { convertAudioToWav16k } from 'react-native-sherpa-onnx/audio';
+   
+   const error = await convertAudioToWav16k(inputPath, outputPath);
+   if (error) {
+     console.error('Conversion failed:', error);
+   }
+   ```
+
+3. **Check audio properties**:
+   ```tsx
+   // Ensure correct format when reading audio
+   const audioData = new Float32Array(samples);
+   recognizer.acceptWaveform(audioData, 16000); // Must be 16kHz
+   ```
+
+### TTS: Playback issues
+
+**Symptoms**: TTS audio doesn't play or sounds distorted.
+
+**Solutions**:
+
+1. **Use correct sample rate** returned by TTS:
+   ```tsx
+   const result = await tts.generate({ text: 'Hello' });
+   console.log('Sample rate:', result.sampleRate); // Use this for playback
+   ```
+
+2. **Convert float samples** for playback:
+   ```tsx
+   // TTS returns float samples, convert to Int16 for player
+   const int16Data = new Int16Array(result.samples.length);
+   for (let i = 0; i < result.samples.length; i++) {
+     int16Data[i] = Math.max(-32768, Math.min(32767, result.samples[i] * 32767));
+   }
+   ```
+
+## Build Issues
+
+### Android: bundletool not found (PAD)
+
+**Symptoms**: Error when running `installDebugWithPad`.
+
+**Solutions**:
+
+- Add `bundletool` to `PATH`
+- Or pass path explicitly: `./gradlew installDebugWithPad -Pbundletool=/path/to/bundletool`
+- Download bundletool: https://github.com/google/bundletool/releases
+
+### iOS: Framework or headers not found
+
+**Symptoms**: Build fails with missing framework or header errors.
+
+**Solutions**:
+
+1. **Run pod install**:
+   ```bash
+   cd ios
+   pod install
+   ```
+
+2. **Verify XCFramework**:
+   - Ensure sherpa-onnx XCFramework is downloaded
+   - Check `ios/Frameworks/sherpa_onnx.xcframework` exists
+   - If building locally, place framework in this location
+
+3. **Clean build**:
+   ```bash
+   cd ios
+   rm -rf Pods Podfile.lock
+   pod install
+   ```
+
+### JNI libraries not found (Android)
+
+**Symptoms**: App crashes with "couldn't find DSO to load" or similar.
+
+**Solutions**:
+
+1. **Check library paths**: Ensure prebuilt libraries are in correct location:
+   ```
+   android/src/main/jniLibs/arm64-v8a/
+   android/src/main/jniLibs/armeabi-v7a/
+   ```
+
+2. **Verify ABI compatibility**: Check your `build.gradle` includes required ABIs:
+   ```gradle
+   android {
+     defaultConfig {
+       ndk {
+         abiFilters 'arm64-v8a', 'armeabi-v7a'
+       }
+     }
+   }
+   ```
+
+## Performance Issues
+
+### Slow inference / High RTF
+
+**Symptoms**: Real-time factor (RTF) > 1.0, processing slower than real-time.
+
+**Solutions**:
+
+1. **Enable hardware acceleration**:
+   ```tsx
+   const qnn = await getQnnSupport();
+   if (qnn.canInit) {
+     const recognizer = await createStreamingStt({
+       modelPath: { type: 'asset', path: 'models/my-model' },
+       provider: 'qnn', // Use NPU
+     });
+   }
+   ```
+
+2. **Use quantized models**:
+   - Switch from FP32 to INT8 models
+   - Example: Use `sherpa-onnx-zipvoice-distill-int8` instead of full model
+
+3. **Adjust thread count**:
+   ```tsx
+   const recognizer = await createStreamingStt({
+     modelPath: { type: 'asset', path: 'models/my-model' },
+     numThreads: 4, // Adjust based on device
+   });
+   ```
+
+4. See [Performance Optimization](/advanced/performance-optimization) for detailed tips
+
+### High memory usage / Out of memory
+
+**Symptoms**: App crashes with OOM error, especially with large models.
+
+**Solutions**:
+
+1. **Use smaller models**:
+   ```tsx
+   // For low-RAM devices (<4GB)
+   const modelPath = { 
+     type: 'asset', 
+     path: 'models/zipvoice-distill-int8' // ~104 MB vs ~605 MB
+   };
+   ```
+
+2. **Release resources** when done:
+   ```tsx
+   await recognizer.release();
+   await tts.release();
+   ```
+
+3. **Check memory before loading**:
+   ```tsx
+   try {
+     const tts = await createTTS({ modelPath });
+   } catch (error) {
+     if (error.message.includes('Not enough free memory')) {
+       // Use smaller model or show error
+     }
+   }
+   ```
+
+## Execution Provider Issues
+
+### QNN not available
+
+**Symptoms**: `getQnnSupport().canInit` returns `false`.
+
+**Solutions**:
+
+<Steps>
+  <Step title="Check provider is compiled">
+    ```tsx
+    const qnn = await getQnnSupport();
+    console.log('Provider compiled:', qnn.providerCompiled);
+    ```
+  </Step>
+  
+  <Step title="Add QNN runtime libraries">
+    - Download Qualcomm AI Runtime from Qualcomm Software Center
+    - Copy `.so` files to `android/app/src/main/jniLibs/arm64-v8a/`
+    - Required files: `libQnnHtp.so`, `libQnnHtpV*Stub.so`, `libQnnSystem.so`, etc.
+  </Step>
+  
+  <Step title="Verify device support">
+    - QNN requires Qualcomm SoC with HTP support
+    - Check `hasAccelerator` field
+  </Step>
+</Steps>
+
+See [Execution Providers](/features/execution-providers) for detailed QNN setup.
+
+### NNAPI session fails
+
+**Symptoms**: `getNnapiSupport().canInit` returns `false` but `providerCompiled` is `true`.
+
+**Solutions**:
+
+- This can be model-specific: some models may not be compatible with NNAPI
+- Try with a different model or use CPU fallback:
+  ```tsx
+  const nnapi = await getNnapiSupport();
+  const provider = nnapi.canInit ? 'nnapi' : 'cpu';
+  ```
+- Check Android version: NNAPI requires Android 8.1+
+
+## Download Manager Issues
+
+### Model download fails
+
+**Symptoms**: `downloadModelByCategory()` promise rejects.
+
+**Solutions**:
+
+1. **Check network connectivity**
+2. **Verify model ID**: Ensure the model ID is correct:
+   ```tsx
+   const models = await listModelsByCategory('stt');
+   console.log('Available models:', models.map(m => m.id));
+   ```
+3. **Check disk space**: Ensure sufficient storage available
+4. **Handle errors gracefully**:
+   ```tsx
+   try {
+     await downloadModelByCategory('stt', 'whisper-tiny', {
+       onProgress: (event) => console.log(`Progress: ${event.progress}%`),
+     });
+   } catch (error) {
+     console.error('Download failed:', error.message);
+   }
+   ```
+
+### Archive extraction fails
+
+**Symptoms**: Download completes but model is not usable.
+
+**Solutions**:
+
+1. **Check if libarchive is disabled**:
+   - If `sherpaOnnxDisableLibarchive=true` is set, archive models won't work
+   - Solution: Remove the flag or use single-file models (`.onnx`)
+
+2. **Verify downloaded file**:
+   ```tsx
+   import { computeFileSha256 } from 'react-native-sherpa-onnx';
+   
+   const hash = await computeFileSha256(downloadedFilePath);
+   console.log('File hash:', hash);
+   ```
+
+3. See [Disable libarchive](/advanced/disable-libarchive) for details
+
+## Runtime Errors
+
+### "FFmpeg not available" error
+
+**Symptoms**: `convertAudioToWav16k()` returns error.
+
+**Cause**: FFmpeg is disabled via `sherpaOnnxDisableFfmpeg=true`.
+
+**Solutions**:
+
+1. **Remove the flag** if you need audio conversion:
+   ```properties
+   # gradle.properties
+   # sherpaOnnxDisableFfmpeg=true  # Remove or comment out
+   ```
+
+2. **Use external conversion**:
+   - Use another library for audio conversion
+   - Or provide pre-converted audio files
+
+3. See [Disable FFmpeg](/advanced/disable-ffmpeg) for details
+
+### Invalid language code crashes (Whisper)
+
+**Symptoms**: App crashes when using Whisper with invalid language code.
+
+**Solutions**:
+
+1. **Use valid language codes**:
+   ```tsx
+   import { getWhisperLanguages } from 'react-native-sherpa-onnx/stt';
+   
+   const languages = await getWhisperLanguages();
+   // Returns: [{ id: 'en', name: 'English' }, { id: 'de', name: 'German' }, ...]
+   ```
+
+2. **Build language selector**:
+   ```tsx
+   const languages = await getWhisperLanguages();
+   
+   // In your UI component
+   <Picker
+     selectedValue={selectedLang}
+     onValueChange={(value) => setSelectedLang(value)}
+   >
+     {languages.map(lang => (
+       <Picker.Item key={lang.id} label={lang.name} value={lang.id} />
+     ))}
+   </Picker>
+   ```
+
+### Zipvoice initialization fails
+
+**Symptoms**: Error when initializing Zipvoice TTS model.
+
+**Cause**: Vocoder file missing (encoder + decoder only models not supported).
+
+**Solutions**:
+
+1. **Verify model includes vocoder**:
+   - Check for `vocos_24khz.onnx` or `hifigan.onnx` in model directory
+   - Distill models without vocoder will fail
+
+2. **Use complete Zipvoice model**:
+   ```tsx
+   // Good: Full model with vocoder
+   modelPath: { type: 'asset', path: 'models/zipvoice-zh-en-emilia' }
+   
+   // Bad: Distill without vocoder (will fail)
+   modelPath: { type: 'asset', path: 'models/zipvoice-distill-no-vocoder' }
+   ```
+
+## Symbol Clashes
+
+### Multiple FFmpeg libraries crash
+
+**Symptoms**: App crashes with undefined behavior when using multiple libraries with FFmpeg.
+
+**Solutions**:
+
+1. **Disable FFmpeg** in Sherpa-ONNX:
+   ```properties
+   # gradle.properties
+   sherpaOnnxDisableFfmpeg=true
+   ```
+
+2. See [Disable FFmpeg](/advanced/disable-ffmpeg) for details
+
+### Multiple libarchive libraries conflict
+
+**Symptoms**: Symbol conflicts when multiple libraries include libarchive.
+
+**Solutions**:
+
+1. **Disable libarchive** in Sherpa-ONNX:
+   ```properties
+   # gradle.properties
+   sherpaOnnxDisableLibarchive=true
+   ```
+
+2. See [Disable libarchive](/advanced/disable-libarchive) for details
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/k2-fsa/sherpa-onnx/issues">
+    Report bugs or request features
+  </Card>
+  
+  <Card title="Documentation" icon="book" href="/introduction">
+    Browse the full documentation
+  </Card>
+  
+  <Card title="Examples" icon="code" href="https://github.com/k2-fsa/sherpa-onnx/tree/master/react-native-examples">
+    Check example implementations
+  </Card>
+  
+  <Card title="Upstream Docs" icon="link" href="https://k2-fsa.github.io/sherpa/onnx/">
+    Sherpa-ONNX C++ documentation
+  </Card>
+</CardGroup>
+
+## Debug Checklist
+
+When troubleshooting issues, check:
+
+- [ ] Model files are present and complete
+- [ ] Audio format matches requirements (16kHz, mono, 16-bit PCM for STT)
+- [ ] Sufficient memory available (check device RAM)
+- [ ] Correct execution provider for device
+- [ ] Native libraries present for target ABI
+- [ ] No conflicting native dependencies
+- [ ] Latest SDK version installed
+- [ ] Clean rebuild after configuration changes

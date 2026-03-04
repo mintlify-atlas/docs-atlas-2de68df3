@@ -1,0 +1,454 @@
+---
+title: 'TTS Configuration'
+description: 'Configuration options for Text-to-Speech engines'
+---
+
+## TTSInitializeOptions
+
+Configuration for initializing a TTS engine (batch or streaming).
+
+```typescript
+interface TTSInitializeOptions {
+  modelPath: ModelPathConfig;
+  modelType?: TTSModelType;
+  provider?: string;
+  numThreads?: number;
+  debug?: boolean;
+  modelOptions?: TtsModelOptions;
+  ruleFsts?: string;
+  ruleFars?: string;
+  maxNumSentences?: number;
+  silenceScale?: number;
+}
+```
+
+### Parameters
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Path to the TTS model directory.
+  
+  Can be:
+  - `{ type: 'asset', path: 'models/vits-piper-en' }` - Asset bundled with app
+  - `{ type: 'file', path: '/absolute/path/to/model' }` - File system path
+  - `{ type: 'auto', path: 'models/...' }` - Auto-detect location
+</ParamField>
+
+<ParamField path="modelType" type="TTSModelType" default="'auto'">
+  Model type to use. If not specified or `'auto'`, the type will be auto-detected based on files in the model directory.
+  
+  Supported types:
+  - `'vits'` - VITS models (Piper, Coqui, MeloTTS, MMS)
+  - `'matcha'` - Matcha models (acoustic + vocoder)
+  - `'kokoro'` - Kokoro models (multi-speaker, multi-language)
+  - `'kitten'` - KittenTTS models (lightweight, multi-speaker)
+  - `'pocket'` - Pocket TTS models
+  - `'zipvoice'` - Zipvoice models (voice cloning)
+  - `'auto'` - Auto-detect (default)
+</ParamField>
+
+<ParamField path="provider" type="string" default="'cpu'">
+  Execution provider for ONNX inference.
+  
+  Common values:
+  - `'cpu'` - CPU execution (default, always available)
+  - `'coreml'` - Apple CoreML (iOS/macOS, check with `getCoreMlSupport()`)
+  - `'xnnpack'` - XNNPACK (mobile optimized)
+  - `'nnapi'` - Android NNAPI
+  - `'qnn'` - Qualcomm AI Engine
+  
+  Use the support detection functions to check availability before using hardware acceleration.
+</ParamField>
+
+<ParamField path="numThreads" type="number" default="2">
+  Number of threads for inference.
+  
+  - More threads = faster processing but higher CPU usage
+  - Typical values: 2-4
+  - Not used when hardware accelerators (CoreML, NNAPI) are active
+</ParamField>
+
+<ParamField path="debug" type="boolean" default="false">
+  Enable debug logging from the native TTS engine.
+</ParamField>
+
+<ParamField path="modelOptions" type="TtsModelOptions">
+  Model-specific options (noise scale, length scale, etc.).
+  
+  Only the options for the loaded model type are applied. For example, when `modelType` is `'vits'`, only `modelOptions.vits` is used.
+  
+  See [TtsModelOptions](#ttsmodelоptions) below.
+</ParamField>
+
+<ParamField path="ruleFsts" type="string">
+  Path(s) to rule FSTs (Finite State Transducers) for text normalization/ITN (Inverse Text Normalization).
+</ParamField>
+
+<ParamField path="ruleFars" type="string">
+  Path(s) to rule FARs (Finite-state Archive) for text normalization/ITN.
+</ParamField>
+
+<ParamField path="maxNumSentences" type="number" default="1">
+  Maximum number of sentences per streaming callback.
+</ParamField>
+
+<ParamField path="silenceScale" type="number" default="0.2">
+  Silence scale at configuration level (global silence padding).
+  
+  Can also be set per-generation via `TtsGenerationOptions.silenceScale`.
+</ParamField>
+
+### Example
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+  provider: 'cpu',
+  numThreads: 4,
+  debug: false,
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      lengthScale: 1.0,
+    },
+  },
+  silenceScale: 0.2,
+});
+```
+
+---
+
+## TtsModelOptions
+
+Model-specific configuration options. Only the block for the loaded model type is applied.
+
+```typescript
+interface TtsModelOptions {
+  vits?: TtsVitsModelOptions;
+  matcha?: TtsMatchaModelOptions;
+  kokoro?: TtsKokoroModelOptions;
+  kitten?: TtsKittenModelOptions;
+  pocket?: TtsPocketModelOptions;
+}
+```
+
+### TtsVitsModelOptions
+
+Options for VITS models (Piper, Coqui, MeloTTS, MMS variants).
+
+```typescript
+interface TtsVitsModelOptions {
+  noiseScale?: number;
+  noiseScaleW?: number;
+  lengthScale?: number;
+}
+```
+
+<ParamField path="noiseScale" type="number">
+  Noise scale parameter. Controls voice variation/expressiveness.
+  
+  If omitted, model default (from `model.json`) is used.
+</ParamField>
+
+<ParamField path="noiseScaleW" type="number">
+  Noise scale W parameter. Controls additional voice characteristics.
+  
+  If omitted, model default is used.
+</ParamField>
+
+<ParamField path="lengthScale" type="number">
+  Length scale parameter. Controls speech duration/speed.
+  
+  - `< 1.0` = faster speech
+  - `1.0` = normal speed
+  - `> 1.0` = slower speech
+  
+  If omitted, model default is used.
+</ParamField>
+
+**Example:**
+
+```typescript
+modelOptions: {
+  vits: {
+    noiseScale: 0.667,
+    noiseScaleW: 0.8,
+    lengthScale: 1.0,
+  },
+}
+```
+
+### TtsMatchaModelOptions
+
+Options for Matcha models (acoustic model + vocoder).
+
+```typescript
+interface TtsMatchaModelOptions {
+  noiseScale?: number;
+  lengthScale?: number;
+}
+```
+
+<ParamField path="noiseScale" type="number">
+  Noise scale parameter.
+</ParamField>
+
+<ParamField path="lengthScale" type="number">
+  Length scale parameter.
+</ParamField>
+
+### TtsKokoroModelOptions
+
+Options for Kokoro models (multi-speaker, multi-language).
+
+```typescript
+interface TtsKokoroModelOptions {
+  lengthScale?: number;
+}
+```
+
+<ParamField path="lengthScale" type="number">
+  Length scale parameter.
+</ParamField>
+
+### TtsKittenModelOptions
+
+Options for KittenTTS models (lightweight, multi-speaker).
+
+```typescript
+interface TtsKittenModelOptions {
+  lengthScale?: number;
+}
+```
+
+<ParamField path="lengthScale" type="number">
+  Length scale parameter.
+</ParamField>
+
+### TtsPocketModelOptions
+
+Options for Pocket TTS models. Currently has no init-time configuration.
+
+```typescript
+interface TtsPocketModelOptions {}
+```
+
+Voice cloning for Pocket TTS is configured at generation time via `TtsGenerationOptions.referenceAudio`.
+
+---
+
+## TtsUpdateOptions
+
+Options for updating TTS model parameters at runtime without reloading the model.
+
+```typescript
+interface TtsUpdateOptions {
+  modelType?: TTSModelType;
+  modelOptions?: TtsModelOptions;
+}
+```
+
+<ParamField path="modelType" type="TTSModelType">
+  Model type currently loaded.
+  
+  When omitted or `'auto'`, the SDK uses the model type from the last successful initialization. After calling `destroy()`, pass `modelType` explicitly until initialized again.
+</ParamField>
+
+<ParamField path="modelOptions" type="TtsModelOptions">
+  Model-specific options to update.
+  
+  Only the block for the effective model type is used (e.g., `modelOptions.vits` when type is `'vits'`).
+</ParamField>
+
+### Example
+
+```typescript
+// Update VITS model parameters
+await tts.updateParams({
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.8,
+      lengthScale: 1.1,
+    },
+  },
+});
+```
+
+---
+
+## TtsGenerationOptions
+
+Options for TTS speech generation (both batch and streaming).
+
+```typescript
+interface TtsGenerationOptions {
+  sid?: number;
+  speed?: number;
+  silenceScale?: number;
+  referenceAudio?: { samples: number[]; sampleRate: number };
+  referenceText?: string;
+  numSteps?: number;
+  extra?: Record<string, string>;
+}
+```
+
+<ParamField path="sid" type="number" default="0">
+  Speaker ID for multi-speaker models.
+  
+  - For single-speaker models, this is ignored
+  - Use `getNumSpeakers()` to check how many speakers are available
+  - Typically ranges from `0` to `numSpeakers - 1`
+</ParamField>
+
+<ParamField path="speed" type="number" default="1.0">
+  Speech speed multiplier.
+  
+  - `1.0` = normal speed
+  - `0.5` = half speed (slower)
+  - `2.0` = double speed (faster)
+  - Typical range: `0.5` to `2.0`
+</ParamField>
+
+<ParamField path="silenceScale" type="number">
+  Silence scale for this generation (overrides config-level `silenceScale`).
+  
+  Controls the amount of silence/pauses in the generated speech.
+</ParamField>
+
+<ParamField path="referenceAudio" type="{ samples: number[]; sampleRate: number }">
+  Reference audio for voice cloning.
+  
+  - **Only used by Pocket TTS** - other model types ignore this
+  - `samples` - Mono float PCM samples in range [-1.0, 1.0]
+  - `sampleRate` - Sample rate in Hz (e.g., 22050, 44100)
+</ParamField>
+
+<ParamField path="referenceText" type="string">
+  Transcript text of the reference audio.
+  
+  - **Required for Pocket TTS when `referenceAudio` is provided**
+  - Ignored by other model types
+</ParamField>
+
+<ParamField path="numSteps" type="number">
+  Number of generation steps (e.g., flow-matching steps).
+  
+  Used by models like Pocket TTS. Higher values = better quality but slower generation.
+</ParamField>
+
+<ParamField path="extra" type="Record<string, string>">
+  Extra model-specific options as key-value pairs.
+  
+  Examples for Pocket TTS:
+  - `temperature` - Controls randomness
+  - `chunk_size` - Generation chunk size
+</ParamField>
+
+### Examples
+
+**Basic generation with speed:**
+
+```typescript
+const audio = await tts.generateSpeech('Hello world', {
+  speed: 1.2,
+});
+```
+
+**Multi-speaker model:**
+
+```typescript
+const numSpeakers = await tts.getNumSpeakers();
+if (numSpeakers > 1) {
+  const audio = await tts.generateSpeech('Hello', {
+    sid: 1, // Use speaker 1
+    speed: 1.0,
+  });
+}
+```
+
+**Voice cloning (Pocket TTS):**
+
+```typescript
+import { Audio } from 'expo-av';
+
+// Load reference audio
+const referenceUri = 'path/to/reference.wav';
+const referenceSamples = /* load and convert to float PCM */;
+
+const audio = await tts.generateSpeech('Clone my voice', {
+  referenceAudio: {
+    samples: referenceSamples,
+    sampleRate: 22050,
+  },
+  referenceText: 'This is the reference text',
+  numSteps: 10,
+  extra: {
+    temperature: '0.7',
+  },
+});
+```
+
+---
+
+## TTSModelType
+
+Supported TTS model types.
+
+```typescript
+type TTSModelType =
+  | 'vits'
+  | 'matcha'
+  | 'kokoro'
+  | 'kitten'
+  | 'pocket'
+  | 'zipvoice'
+  | 'auto';
+```
+
+<ParamField path="'vits'" type="TTSModelType">
+  VITS models - includes Piper, Coqui, MeloTTS, MMS variants
+</ParamField>
+
+<ParamField path="'matcha'" type="TTSModelType">
+  Matcha models - acoustic model + vocoder
+</ParamField>
+
+<ParamField path="'kokoro'" type="TTSModelType">
+  Kokoro models - multi-speaker, multi-language
+</ParamField>
+
+<ParamField path="'kitten'" type="TTSModelType">
+  KittenTTS models - lightweight, multi-speaker
+</ParamField>
+
+<ParamField path="'pocket'" type="TTSModelType">
+  Pocket TTS models - supports voice cloning
+</ParamField>
+
+<ParamField path="'zipvoice'" type="TTSModelType">
+  Zipvoice models - voice cloning capable
+</ParamField>
+
+<ParamField path="'auto'" type="TTSModelType">
+  Auto-detect model type based on files present (default)
+</ParamField>
+
+### Runtime type list
+
+```typescript
+import { TTS_MODEL_TYPES } from 'react-native-sherpa-onnx';
+
+console.log('Supported model types:', TTS_MODEL_TYPES);
+// ['vits', 'matcha', 'kokoro', 'kitten', 'pocket', 'zipvoice', 'auto']
+```
+
+---
+
+## See Also
+
+- [createTTS()](/api/tts/create-tts) - Batch TTS engine
+- [createStreamingTTS()](/api/tts/streaming-tts) - Streaming TTS engine
+- [Types](/api/tts/types) - All TypeScript type definitions

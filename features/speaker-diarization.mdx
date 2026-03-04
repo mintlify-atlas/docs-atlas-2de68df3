@@ -1,0 +1,260 @@
+---
+title: 'Speaker Diarization'
+description: 'Identify who spoke when in multi-speaker audio (Coming in v0.4.0)'
+icon: 'users'
+---
+
+<Note>
+  This feature is **coming in version 0.4.0** and is not yet available in the current release.
+</Note>
+
+## Overview
+
+Speaker Diarization will answer the question "who spoke when?" in audio recordings with multiple speakers. This enables:
+
+- Identifying and labeling different speakers
+- Creating speaker timelines and segments
+- Improving meeting transcription accuracy
+- Separating overlapping speech
+
+## Planned Features
+
+<CardGroup cols={2}>
+  <Card title="Speaker Identification" icon="user-tag">
+    Detect and label multiple speakers in audio
+  </Card>
+  <Card title="Timeline Generation" icon="clock">
+    Generate speaker timelines with start/end times
+  </Card>
+  <Card title="Overlap Detection" icon="layer-group">
+    Identify when multiple speakers talk simultaneously
+  </Card>
+  <Card title="Clustering" icon="object-group">
+    Automatically group speech by speaker
+  </Card>
+</CardGroup>
+
+## Expected API (Preview)
+
+While the API is not finalized, the expected interface will be:
+
+```typescript
+import { createDiarization } from 'react-native-sherpa-onnx/diarization';
+
+// Create diarization engine
+const diarizer = await createDiarization({
+  modelPath: { type: 'asset', path: 'models/pyannote-segmentation' },
+  numSpeakers: 2,  // or 'auto' for automatic detection
+});
+
+// Process audio file
+const result = await diarizer.processFile('/path/to/conversation.wav');
+
+// Result structure
+console.log(result.segments);
+// [
+//   { speaker: 'SPEAKER_00', start: 0.0, end: 2.5 },
+//   { speaker: 'SPEAKER_01', start: 2.6, end: 5.1 },
+//   { speaker: 'SPEAKER_00', start: 5.2, end: 8.3 },
+// ]
+
+// Cleanup
+await diarizer.destroy();
+```
+
+## Use Cases
+
+### 1. Meeting Transcription
+
+Combine STT with diarization for speaker-labeled transcripts:
+
+```typescript
+// Planned API
+const diarizer = await createDiarization(config);
+const stt = await createSTT(sttConfig);
+
+const segments = await diarizer.processFile('/path/to/meeting.wav');
+
+for (const segment of segments) {
+  const transcript = await stt.transcribeFile(
+    segment.audioPath  // Extract segment
+  );
+  
+  console.log(`${segment.speaker} (${segment.start}-${segment.end}): ${transcript.text}`);
+}
+
+await diarizer.destroy();
+await stt.destroy();
+```
+
+### 2. Podcast Processing
+
+Identify and label podcast hosts and guests:
+
+```typescript
+// Planned API
+const result = await diarizer.processFile('/path/to/podcast.wav');
+
+// Map speaker IDs to names
+const speakerMap = {
+  'SPEAKER_00': 'Host',
+  'SPEAKER_01': 'Guest',
+};
+
+for (const segment of result.segments) {
+  const name = speakerMap[segment.speaker] || segment.speaker;
+  console.log(`${name}: ${segment.start}s - ${segment.end}s`);
+}
+```
+
+### 3. Call Center Analytics
+
+Separate agent and customer speech:
+
+```typescript
+// Planned API
+const result = await diarizer.processFile('/path/to/call.wav', {
+  numSpeakers: 2,
+  labels: ['Agent', 'Customer'],
+});
+
+// Analyze speaking time
+const agentTime = result.segments
+  .filter(s => s.speaker === 'Agent')
+  .reduce((sum, s) => sum + (s.end - s.start), 0);
+
+const customerTime = result.segments
+  .filter(s => s.speaker === 'Customer')
+  .reduce((sum, s) => sum + (s.end - s.start), 0);
+
+console.log(`Agent: ${agentTime}s, Customer: ${customerTime}s`);
+```
+
+## Planned Configuration
+
+```typescript
+// Expected configuration options
+interface DiarizationConfig {
+  modelPath: ModelPathConfig;
+  numSpeakers: number | 'auto';  // Fixed count or auto-detect
+  minSpeakers?: number;          // Min speakers (for auto mode)
+  maxSpeakers?: number;          // Max speakers (for auto mode)
+  minSegmentDuration?: number;   // Minimum segment length (seconds)
+  overlapThreshold?: number;     // Overlap detection threshold
+}
+```
+
+## Expected Output
+
+```typescript
+interface DiarizationResult {
+  segments: DiarizationSegment[];
+  numSpeakers: number;
+  speakerLabels?: string[];
+}
+
+interface DiarizationSegment {
+  speaker: string;     // 'SPEAKER_00', 'SPEAKER_01', etc.
+  start: number;       // Start time in seconds
+  end: number;         // End time in seconds
+  confidence?: number; // Speaker assignment confidence
+}
+```
+
+## Expected Models
+
+Likely model support:
+
+- **pyannote.audio** - State-of-the-art speaker diarization
+- **Resemblyzer** - Speaker embedding models
+- **Custom sherpa-onnx models** - Optimized for mobile
+
+## Timeline
+
+Diarization support is planned for:
+
+<Steps>
+  <Step title="Version 0.4.0">
+    Initial diarization with basic speaker segmentation
+  </Step>
+  <Step title="Future versions">
+    Advanced features like speaker enrollment and real-time diarization
+  </Step>
+</Steps>
+
+## Stay Updated
+
+To track progress or contribute:
+
+- Watch the [GitHub repository](https://github.com/XDcobra/react-native-sherpa-onnx)
+- Check the [changelog](https://github.com/XDcobra/react-native-sherpa-onnx/blob/main/CHANGELOG.md)
+- Join discussions in issues or PRs
+
+## Current Workarounds
+
+While diarization is not available, you can:
+
+1. **Manual speaker splitting** - Split audio manually and transcribe separately
+2. **External services** - Use cloud APIs (Google, AWS, Azure) for diarization
+3. **Post-processing** - Apply speaker labels after transcription based on patterns
+
+### Manual Approach Example
+
+```typescript
+// Current workaround: transcribe entire file, then manually segment
+const stt = await createSTT(config);
+const result = await stt.transcribeFile('/path/to/meeting.wav');
+
+// Manual speaker assignment based on time ranges
+const segments = [
+  { speaker: 'Host', start: 0, end: 30, text: result.text.slice(0, 100) },
+  { speaker: 'Guest', start: 30, end: 60, text: result.text.slice(100, 200) },
+];
+
+await stt.destroy();
+```
+
+## Integration with STT
+
+When available, diarization will integrate seamlessly with STT:
+
+```typescript
+// Future combined API (preview)
+import { createDiarization } from 'react-native-sherpa-onnx/diarization';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const diarizer = await createDiarization(diarizationConfig);
+const stt = await createSTT(sttConfig);
+
+const diarResult = await diarizer.processFile('/path/to/audio.wav');
+
+for (const segment of diarResult.segments) {
+  // Extract segment audio (helper function)
+  const segmentAudio = extractAudioSegment(
+    '/path/to/audio.wav',
+    segment.start,
+    segment.end
+  );
+  
+  const transcript = await stt.transcribeSamples(
+    segmentAudio.samples,
+    segmentAudio.sampleRate
+  );
+  
+  console.log(`${segment.speaker}: ${transcript.text}`);
+}
+
+await diarizer.destroy();
+await stt.destroy();
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Speech-to-Text" icon="microphone" href="/features/speech-to-text">
+    Transcribe audio to text
+  </Card>
+  <Card title="Source Separation" icon="sliders" href="/features/source-separation">
+    Separate overlapping audio sources (coming in v0.6.0)
+  </Card>
+</CardGroup>

@@ -1,0 +1,343 @@
+---
+title: 'Speaker Diarization'
+description: 'Identify and separate different speakers in audio'
+icon: 'users'
+---
+
+<Warning>
+  **Coming in v0.4.0** - This feature is planned for the next release. The API interface is subject to change.
+</Warning>
+
+## Overview
+
+Speaker Diarization identifies "who spoke when" in an audio recording, segmenting the audio by speaker. This is useful for:
+
+- Meeting transcription with speaker labels
+- Call center analytics
+- Interview transcription
+- Multi-speaker content analysis
+- Podcast and video production
+
+## Installation
+
+Diarization will be included in the main package:
+
+```bash
+npm install react-native-sherpa-onnx
+```
+
+## Basic Usage
+
+```typescript
+import { initializeDiarization, diarizeAudio } from 'react-native-sherpa-onnx/diarization';
+
+// Initialize diarization with model
+await initializeDiarization({
+  modelPath: {
+    type: 'auto',
+    path: 'models/diarization-model'
+  }
+});
+
+// Diarize audio
+const segments = await diarizeAudio('path/to/conversation.wav');
+
+console.log('Speaker segments:', segments);
+// [
+//   { speakerId: 'speaker_0', start: 0.0, end: 3.5 },
+//   { speakerId: 'speaker_1', start: 3.5, end: 7.2 },
+//   { speakerId: 'speaker_0', start: 7.2, end: 10.1 }
+// ]
+```
+
+## API Reference
+
+### initializeDiarization()
+
+Initialize the Speaker Diarization model.
+
+```typescript
+await initializeDiarization(options: DiarizationInitializeOptions): Promise<void>
+```
+
+#### Parameters
+
+<ParamField path="options" type="DiarizationInitializeOptions" required>
+  Configuration options for diarization initialization
+
+  <Expandable title="properties">
+    <ParamField path="modelPath" type="ModelPathConfig" required>
+      Path configuration for the diarization model
+      
+      <Expandable title="properties">
+        <ParamField path="type" type="'auto' | 'file'" required>
+          Type of model path resolution
+        </ParamField>
+        
+        <ParamField path="path" type="string" required>
+          Path to the model directory
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Returns
+
+Promise that resolves when diarization is initialized.
+
+#### Example
+
+```typescript
+await initializeDiarization({
+  modelPath: {
+    type: 'auto',
+    path: 'models/pyannote-diarization'
+  }
+});
+```
+
+### diarizeAudio()
+
+Perform speaker diarization on an audio file.
+
+```typescript
+await diarizeAudio(filePath: string): Promise<SpeakerSegment[]>
+```
+
+#### Parameters
+
+<ParamField path="filePath" type="string" required>
+  Path to the audio file to diarize
+</ParamField>
+
+#### Returns
+
+Promise that resolves to an array of speaker segments.
+
+<ResponseField name="SpeakerSegment[]" type="array">
+  <Expandable title="SpeakerSegment properties">
+    <ResponseField name="speakerId" type="string" required>
+      Unique identifier for the speaker (e.g., "speaker_0", "speaker_1")
+    </ResponseField>
+    
+    <ResponseField name="start" type="number" required>
+      Start time of the speaker segment in seconds
+    </ResponseField>
+    
+    <ResponseField name="end" type="number" required>
+      End time of the speaker segment in seconds
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Example
+
+```typescript
+const segments = await diarizeAudio('/path/to/meeting.wav');
+
+// Group by speaker
+const speakers = segments.reduce((acc, segment) => {
+  if (!acc[segment.speakerId]) {
+    acc[segment.speakerId] = [];
+  }
+  acc[segment.speakerId].push(segment);
+  return acc;
+}, {});
+
+console.log(`Found ${Object.keys(speakers).length} speakers`);
+```
+
+### unloadDiarization()
+
+Release diarization model resources.
+
+```typescript
+await unloadDiarization(): Promise<void>
+```
+
+#### Returns
+
+Promise that resolves when resources are released.
+
+#### Example
+
+```typescript
+// When done with diarization
+await unloadDiarization();
+```
+
+## Types
+
+### DiarizationInitializeOptions
+
+```typescript
+interface DiarizationInitializeOptions {
+  modelPath: ModelPathConfig;
+  // Additional options will be added in v0.4.0
+}
+```
+
+### SpeakerSegment
+
+```typescript
+interface SpeakerSegment {
+  speakerId: string;  // Unique speaker identifier
+  start: number;      // Start time in seconds
+  end: number;        // End time in seconds
+  // Additional fields will be added in v0.4.0
+}
+```
+
+### ModelPathConfig
+
+```typescript
+interface ModelPathConfig {
+  type: 'auto' | 'file';
+  path: string;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use high-quality audio">
+    Diarization accuracy depends heavily on audio quality:
+    - **Minimize background noise**: Clean audio produces better results
+    - **Avoid overlapping speech**: Speakers talking simultaneously are harder to separate
+    - **Use appropriate microphones**: Individual mics per speaker are ideal
+    - **Maintain consistent volume**: Normalize audio levels across speakers
+  </Accordion>
+
+  <Accordion title="Combine with transcription">
+    Diarization is most powerful when combined with speech recognition:
+    ```typescript
+    // 1. Diarize the audio
+    const speakers = await diarizeAudio('meeting.wav');
+    
+    // 2. Transcribe each speaker segment
+    for (const segment of speakers) {
+      const text = await transcribe({
+        file: 'meeting.wav',
+        start: segment.start,
+        end: segment.end
+      });
+      console.log(`${segment.speakerId}: ${text}`);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Handle unknown speaker counts">
+    Most diarization models automatically detect the number of speakers:
+    - Don't assume a fixed number of speakers
+    - Handle cases with 1 speaker (monologue)
+    - Consider maximum speaker limits for your use case
+    - Post-process to merge or split segments if needed
+  </Accordion>
+</AccordionGroup>
+
+## Common Use Cases
+
+### Meeting Transcription
+
+```typescript
+import { initializeDiarization, diarizeAudio } from 'react-native-sherpa-onnx/diarization';
+import { transcribeRecognizer } from 'react-native-sherpa-onnx';
+
+async function transcribeMeeting(audioPath: string) {
+  // Initialize both systems
+  await initializeDiarization({
+    modelPath: { type: 'auto', path: 'models/diarization' }
+  });
+  
+  // Get speaker segments
+  const segments = await diarizeAudio(audioPath);
+  
+  // Create transcript with speaker labels
+  const transcript = [];
+  for (const segment of segments) {
+    const text = await transcribeSegment(audioPath, segment.start, segment.end);
+    transcript.push({
+      speaker: segment.speakerId,
+      text: text,
+      timestamp: `${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s`
+    });
+  }
+  
+  return transcript;
+}
+```
+
+### Speaker Timeline Visualization
+
+```typescript
+const segments = await diarizeAudio('conversation.wav');
+
+// Create timeline representation
+const timeline = segments.map(segment => ({
+  speaker: segment.speakerId,
+  duration: segment.end - segment.start,
+  startTime: segment.start
+}));
+
+// Calculate speaker talk time
+const talkTime = segments.reduce((acc, segment) => {
+  const duration = segment.end - segment.start;
+  acc[segment.speakerId] = (acc[segment.speakerId] || 0) + duration;
+  return acc;
+}, {});
+
+console.log('Talk time per speaker:', talkTime);
+```
+
+## Error Handling
+
+```typescript
+try {
+  await initializeDiarization({
+    modelPath: {
+      type: 'auto',
+      path: 'models/diarization'
+    }
+  });
+  
+  const segments = await diarizeAudio('audio.wav');
+  
+  if (segments.length === 0) {
+    console.log('No speakers detected in audio');
+  } else {
+    const numSpeakers = new Set(segments.map(s => s.speakerId)).size;
+    console.log(`Detected ${numSpeakers} speaker(s)`);
+  }
+} catch (error) {
+  console.error('Diarization error:', error);
+} finally {
+  await unloadDiarization();
+}
+```
+
+## Performance Considerations
+
+<Note>
+  Speaker diarization is computationally intensive:
+  - Processing time scales with audio length
+  - Expect 0.1x - 0.5x real-time performance depending on model
+  - Consider processing in chunks for long recordings
+  - Use VAD preprocessing to skip silent segments
+</Note>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Voice Activity Detection" icon="waveform" href="/api/vad">
+    Preprocess audio to remove silence
+  </Card>
+  
+  <Card title="Speech Recognition" icon="microphone" href="/api/stt">
+    Transcribe speaker segments
+  </Card>
+  
+  <Card title="Speech Enhancement" icon="sparkles" href="/api/enhancement">
+    Improve audio quality before diarization
+  </Card>
+</CardGroup>

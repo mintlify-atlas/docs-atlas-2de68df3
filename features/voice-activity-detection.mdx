@@ -1,0 +1,199 @@
+---
+title: 'Voice Activity Detection'
+description: 'Real-time detection of speech in audio streams (Coming in v0.7.0)'
+icon: 'wave-pulse'
+---
+
+<Note>
+  This feature is **coming in version 0.7.0** and is not yet available in the current release.
+</Note>
+
+## Overview
+
+Voice Activity Detection (VAD) will enable real-time detection of speech vs. silence in audio streams. This is essential for:
+
+- Automatic silence removal in recordings
+- Speech segmentation before transcription
+- Reducing unnecessary processing during silent periods
+- Triggering speech recognition only when needed
+
+## Planned Features
+
+<CardGroup cols={2}>
+  <Card title="Real-time Detection" icon="bolt">
+    Detect voice activity as audio streams in
+  </Card>
+  <Card title="Low Latency" icon="gauge-high">
+    Minimal processing delay for responsive apps
+  </Card>
+  <Card title="Silence Removal" icon="volume-xmark">
+    Automatically skip non-speech segments
+  </Card>
+  <Card title="Speech Segmentation" icon="scissors">
+    Split audio into speech and non-speech regions
+  </Card>
+</CardGroup>
+
+## Expected API (Preview)
+
+While the API is not finalized, the expected interface will be:
+
+```typescript
+import { createVAD } from 'react-native-sherpa-onnx/vad';
+
+// Create VAD engine
+const vad = await createVAD({
+  modelPath: { type: 'asset', path: 'models/silero-vad' },
+  sampleRate: 16000,
+  windowSize: 512,
+});
+
+// Process audio chunks
+const isSpeech = await vad.detectSpeech(samples);
+
+if (isSpeech) {
+  // Forward to STT or other processing
+  processAudio(samples);
+}
+
+// Cleanup
+await vad.destroy();
+```
+
+## Use Cases
+
+### 1. Efficient Recording
+
+Only save or process audio segments containing speech:
+
+```typescript
+// Planned API
+const recorder = startRecording();
+
+recorder.on('chunk', async (samples) => {
+  const isSpeech = await vad.detectSpeech(samples);
+  
+  if (isSpeech) {
+    // Only process speech segments
+    await processAudioChunk(samples);
+  }
+});
+```
+
+### 2. Pre-processing for STT
+
+Segment continuous audio before transcription:
+
+```typescript
+// Planned API
+const segments = await vad.segmentAudio(audioFile);
+
+for (const segment of segments) {
+  if (segment.isSpeech) {
+    const result = await stt.transcribeSamples(
+      segment.samples,
+      segment.sampleRate
+    );
+    console.log(result.text);
+  }
+}
+```
+
+### 3. Wake Word Detection
+
+Trigger STT only when speech is detected:
+
+```typescript
+// Planned API
+const stream = await createAudioStream();
+
+stream.on('data', async (samples) => {
+  const isSpeech = await vad.detectSpeech(samples);
+  
+  if (isSpeech) {
+    // Start transcription
+    await sttStream.acceptWaveform(samples, 16000);
+  }
+});
+```
+
+## Planned Configuration
+
+```typescript
+// Expected configuration options
+interface VADConfig {
+  modelPath: ModelPathConfig;
+  sampleRate: number;        // 8000, 16000 (default), 32000, 48000
+  windowSize: number;        // Samples per window (e.g., 512, 1024)
+  threshold: number;         // Speech confidence threshold (0..1)
+  minSpeechDuration: number; // Minimum speech length (ms)
+  minSilenceDuration: number; // Minimum silence to split (ms)
+}
+```
+
+## Expected Models
+
+Likely model support:
+
+- **Silero VAD** - Lightweight, efficient, ONNX-based
+- **WebRTC VAD** - Classic algorithm
+- **Custom models** - Via sherpa-onnx framework
+
+## Timeline
+
+VAD support is planned for:
+
+<Steps>
+  <Step title="Version 0.7.0">
+    Initial VAD implementation with basic detection
+  </Step>
+  <Step title="Future versions">
+    Advanced features like adaptive thresholds and multi-language support
+  </Step>
+</Steps>
+
+## Stay Updated
+
+To track progress or contribute:
+
+- Watch the [GitHub repository](https://github.com/XDcobra/react-native-sherpa-onnx)
+- Check the [changelog](https://github.com/XDcobra/react-native-sherpa-onnx/blob/main/CHANGELOG.md)
+- Join discussions in issues or PRs
+
+## Current Workarounds
+
+While VAD is not available, you can:
+
+1. **Use streaming STT with endpoint detection** - The streaming STT API already includes basic endpoint detection
+2. **External libraries** - Use JavaScript audio analysis libraries
+3. **Manual silence detection** - Implement simple amplitude-based detection
+
+### Simple Amplitude Detection
+
+```typescript
+function detectSilence(samples: number[], threshold: number = 0.01): boolean {
+  const rms = Math.sqrt(
+    samples.reduce((sum, val) => sum + val * val, 0) / samples.length
+  );
+  return rms < threshold;
+}
+
+// Usage
+const samples = getPcmSamples();
+const isSilent = detectSilence(samples);
+
+if (!isSilent) {
+  // Process audio
+}
+```
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Streaming STT" icon="tower-broadcast" href="/features/streaming-stt">
+    Real-time transcription with endpoint detection
+  </Card>
+  <Card title="Speech Enhancement" icon="wand-magic-sparkles" href="/features/speech-enhancement">
+    Noise reduction (coming in v0.5.0)
+  </Card>
+</CardGroup>

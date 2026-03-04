@@ -1,0 +1,259 @@
+---
+title: 'Model Detection'
+description: 'Detect and list STT/TTS models without initialization'
+icon: 'magnifying-glass'
+---
+
+## detectSttModel
+
+Detect STT (Speech-to-Text) model type and structure without initializing the recognizer. Uses the same native file-based detection as `initializeStt`. Useful to show model-specific options before initialization or to query the type for a given path.
+
+<CodeGroup>
+```typescript Function Signature
+function detectSttModel(
+  modelDir: string,
+  preferInt8?: boolean,
+  modelType?: string
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>
+```
+
+```typescript Example
+import { detectSttModel, resolveModelPath } from 'react-native-sherpa-onnx';
+
+const modelPath = await resolveModelPath({
+  type: 'asset',
+  path: 'models/sherpa-onnx-streaming-zipformer-en-2023-06-26'
+});
+
+const result = await detectSttModel(modelPath);
+if (result.success) {
+  console.log('Detected model type:', result.modelType);
+  console.log('All models found:', result.detectedModels);
+}
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="modelDir" type="string" required>
+  Absolute path to model directory. Use `resolveModelPath()` first for asset/file paths.
+</ParamField>
+
+<ParamField path="preferInt8" type="boolean">
+  - `true`: prefer int8 models
+  - `false`: prefer regular models
+  - `undefined`: try int8 first (default)
+</ParamField>
+
+<ParamField path="modelType" type="string">
+  Explicit model type or `'auto'` (default). Supported types:
+  - `'transducer'`
+  - `'nemo_transducer'`
+  - `'paraformer'`
+  - `'nemo_ctc'`
+  - `'wenet_ctc'`
+  - `'sense_voice'`
+  - `'zipformer_ctc'`
+  - `'whisper'`
+  - `'funasr_nano'`
+  - `'fire_red_asr'`
+  - `'moonshine'`
+  - `'dolphin'`
+  - `'canary'`
+  - `'omnilingual'`
+  - `'medasr'`
+  - `'telespeech_ctc'`
+  - `'auto'`
+</ParamField>
+
+### Returns
+
+<ResponseField name="success" type="boolean">
+  Whether detection succeeded
+</ResponseField>
+
+<ResponseField name="detectedModels" type="Array<{ type: string; modelDir: string }>">
+  Array of detected model configurations, each containing:
+  - `type`: Model type (e.g., `'transducer'`, `'whisper'`)
+  - `modelDir`: Path to the model directory
+</ResponseField>
+
+<ResponseField name="modelType" type="string">
+  Primary detected model type (same as first entry in `detectedModels`)
+</ResponseField>
+
+---
+
+## detectTtsModel
+
+Detect TTS (Text-to-Speech) model type and structure without initializing the engine. Uses the same native file-based detection as `initializeTts`.
+
+<CodeGroup>
+```typescript Function Signature
+function detectTtsModel(
+  modelDir: string,
+  modelType?: string
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>
+```
+
+```typescript Example
+import { detectTtsModel, resolveModelPath } from 'react-native-sherpa-onnx';
+
+const modelPath = await resolveModelPath({
+  type: 'asset',
+  path: 'models/vits-piper-en_US-amy-low'
+});
+
+const result = await detectTtsModel(modelPath);
+if (result.success) {
+  console.log('Detected TTS model:', result.modelType);
+  console.log('Model details:', result.detectedModels);
+}
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="modelDir" type="string" required>
+  Absolute path to model directory. Use `resolveModelPath()` first for asset/file paths.
+</ParamField>
+
+<ParamField path="modelType" type="string">
+  Explicit model type or `'auto'` (default). Supported types:
+  - `'vits'`
+  - `'matcha'`
+  - `'kokoro'`
+  - `'kitten'`
+  - `'pocket'`
+  - `'zipvoice'`
+  - `'auto'`
+</ParamField>
+
+### Returns
+
+<ResponseField name="success" type="boolean">
+  Whether detection succeeded
+</ResponseField>
+
+<ResponseField name="detectedModels" type="Array<{ type: string; modelDir: string }>">
+  Array of detected model configurations, each containing:
+  - `type`: Model type (e.g., `'vits'`, `'matcha'`)
+  - `modelDir`: Path to the model directory
+</ResponseField>
+
+<ResponseField name="modelType" type="string">
+  Primary detected model type (same as first entry in `detectedModels`)
+</ResponseField>
+
+---
+
+## listAssetModels
+
+List all model folders in the assets/models directory. Scans the platform-specific model directory and returns folder names with type hints.
+
+<CodeGroup>
+```typescript Function Signature
+function listAssetModels(): Promise<
+  Array<{ folder: string; hint: 'stt' | 'tts' | 'unknown' }>
+>
+```
+
+```typescript Example
+import { listAssetModels, resolveModelPath } from 'react-native-sherpa-onnx';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+// Get all model folders
+const models = await listAssetModels();
+console.log('Found models:', models);
+// Example output:
+// [
+//   { folder: 'sherpa-onnx-streaming-zipformer-en-2023-06-26', hint: 'stt' },
+//   { folder: 'sherpa-onnx-matcha-icefall-en_US-ljspeech', hint: 'tts' }
+// ]
+
+// Initialize each STT model
+for (const model of models.filter(m => m.hint === 'stt')) {
+  const path = await resolveModelPath({
+    type: 'asset',
+    path: `models/${model.folder}`
+  });
+  const stt = createSTT();
+  const result = await stt.initialize(path);
+  if (result.success) {
+    console.log(`Found models in ${model.folder}:`, result.detectedModels);
+  }
+}
+```
+</CodeGroup>
+
+### Returns
+
+<ResponseField name="models" type="Array<{ folder: string; hint: 'stt' | 'tts' | 'unknown' }>">
+  Array of model info objects found in assets/models/ (Android) or bundle models/ (iOS):
+  - `folder`: Model directory name
+  - `hint`: Type hint based on folder name (`'stt'`, `'tts'`, or `'unknown'`)
+</ResponseField>
+
+<Note>
+This function is useful for discovering models at runtime without hardcoding paths. The `hint` field is based on folder naming conventions and may not be 100% accurate - use `detectSttModel()` or `detectTtsModel()` for definitive detection.
+</Note>
+
+---
+
+## listModelsAtPath
+
+List model folders under a specific filesystem path. When recursive is true, returns relative folder paths under the base path.
+
+<CodeGroup>
+```typescript Function Signature
+function listModelsAtPath(
+  path: string,
+  recursive?: boolean
+): Promise<Array<{ folder: string; hint: 'stt' | 'tts' | 'unknown' }>>
+```
+
+```typescript Example
+import { listModelsAtPath } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from 'react-native-fs';
+
+const modelsPath = `${DocumentDirectoryPath}/models`;
+const models = await listModelsAtPath(modelsPath, true);
+
+console.log('Models in filesystem:', models);
+// Example output:
+// [
+//   { folder: 'whisper-tiny.en', hint: 'stt' },
+//   { folder: 'custom-tts-model', hint: 'unknown' }
+// ]
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  Absolute filesystem path to scan for models
+</ParamField>
+
+<ParamField path="recursive" type="boolean" default={false}>
+  When `true`, scans subdirectories recursively and returns relative paths
+</ParamField>
+
+### Returns
+
+<ResponseField name="models" type="Array<{ folder: string; hint: 'stt' | 'tts' | 'unknown' }>">
+  Array of model info objects:
+  - `folder`: Model directory name (or relative path if recursive)
+  - `hint`: Type hint based on folder name (`'stt'`, `'tts'`, or `'unknown'`)
+</ResponseField>
+
+<Tip>
+Use this function to scan downloaded models in the filesystem, such as models downloaded to the Documents directory on iOS or internal storage on Android.
+</Tip>

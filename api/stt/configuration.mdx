@@ -1,0 +1,465 @@
+---
+title: "STT Configuration"
+description: "Configuration options for offline and streaming STT engines"
+---
+
+## STTInitializeOptions
+
+Configuration options for creating offline STT engine with `createSTT()`.
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model directory path configuration.
+  
+  ```typescript
+  { type: 'asset', path: 'models/whisper-tiny' }
+  { type: 'file', path: '/sdcard/models/whisper' }
+  { type: 'auto', path: 'whisper-tiny' }
+  ```
+</ParamField>
+
+<ParamField path="modelType" type="STTModelType">
+  Explicit model type. Use `'auto'` for automatic detection (default).
+  
+  Options: `'transducer'`, `'nemo_transducer'`, `'paraformer'`, `'nemo_ctc'`, `'wenet_ctc'`, `'sense_voice'`, `'zipformer_ctc'`, `'ctc'`, `'whisper'`, `'funasr_nano'`, `'fire_red_asr'`, `'moonshine'`, `'dolphin'`, `'canary'`, `'omnilingual'`, `'medasr'`, `'telespeech_ctc'`, `'auto'`
+</ParamField>
+
+<ParamField path="preferInt8" type="boolean">
+  Model quantization preference.
+  
+  - `true`: Prefer int8 quantized models (`model.int8.onnx`) - smaller, faster
+  - `false`: Prefer regular models (`model.onnx`) - higher accuracy
+  - `undefined`: Try int8 first, fall back to regular (default)
+</ParamField>
+
+<ParamField path="debug" type="boolean" default={false}>
+  Enable debug logging in native layer and sherpa-onnx. Emits verbose logs for config dumps, file checks, and init/transcribe flow.
+</ParamField>
+
+<ParamField path="numThreads" type="number" default={1}>
+  Number of threads for inference.
+</ParamField>
+
+<ParamField path="provider" type="string">
+  Execution provider (e.g. `"cpu"`).
+</ParamField>
+
+<ParamField path="dither" type="number" default={0}>
+  Dither value for feature extraction.
+</ParamField>
+
+### Hotwords (Contextual Biasing)
+
+<Note>
+  Hotwords are only supported for `transducer` and `nemo_transducer` model types. Use `sttSupportsHotwords()` to check.
+</Note>
+
+<ParamField path="hotwordsFile" type="string">
+  Path to hotwords file for keyword boosting.
+  
+  ```typescript
+  hotwordsFile: '/path/to/hotwords.txt'
+  ```
+</ParamField>
+
+<ParamField path="hotwordsScore" type="number" default={1.5}>
+  Hotwords score/weight. Higher values increase bias towards hotwords.
+</ParamField>
+
+<ParamField path="modelingUnit" type="'cjkchar' | 'bpe' | 'cjkchar+bpe'">
+  Modeling unit for hotwords tokenization. Required when using hotwords with transducer/nemo_transducer.
+  
+  - `'bpe'`: English models (e.g. zipformer)
+  - `'cjkchar'`: Chinese models (e.g. conformer)
+  - `'cjkchar+bpe'`: Bilingual zh-en models
+</ParamField>
+
+<ParamField path="bpeVocab" type="string">
+  Path to BPE vocabulary file. Required when `modelingUnit` is `'bpe'` or `'cjkchar+bpe'`. Must be sentencepiece `.vocab` export, not the hotwords file.
+</ParamField>
+
+### Inverse Text Normalization
+
+<ParamField path="ruleFsts" type="string">
+  Path to rule FSTs for inverse text normalization.
+</ParamField>
+
+<ParamField path="ruleFars" type="string">
+  Path to rule FARs for inverse text normalization.
+</ParamField>
+
+### Model-Specific Options
+
+<ParamField path="modelOptions" type="SttModelOptions">
+  Model-specific configuration. Only options for the loaded model type are applied.
+  
+  See [Model-Specific Options](#model-specific-options) below.
+</ParamField>
+
+### Example
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer-en' },
+  modelType: 'transducer',
+  preferInt8: true,
+  numThreads: 2,
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 2.0,
+  modelingUnit: 'bpe',
+  bpeVocab: '/path/to/bpe.vocab',
+  debug: false
+});
+```
+
+---
+
+## SttRuntimeConfig
+
+Runtime configuration for offline STT. Update via `SttEngine.setConfig()` without recreating the engine.
+
+<ParamField path="decodingMethod" type="string">
+  Decoding method: `"greedy_search"` or `"modified_beam_search"`.
+</ParamField>
+
+<ParamField path="maxActivePaths" type="number">
+  Max active paths for beam search.
+</ParamField>
+
+<ParamField path="hotwordsFile" type="string">
+  Path to hotwords file. Can be updated at runtime.
+</ParamField>
+
+<ParamField path="hotwordsScore" type="number">
+  Hotwords score/weight.
+</ParamField>
+
+<ParamField path="blankPenalty" type="number">
+  Blank penalty for CTC models.
+</ParamField>
+
+<ParamField path="ruleFsts" type="string">
+  Path to rule FSTs.
+</ParamField>
+
+<ParamField path="ruleFars" type="string">
+  Path to rule FARs.
+</ParamField>
+
+### Example
+
+```typescript
+await stt.setConfig({
+  decodingMethod: 'modified_beam_search',
+  maxActivePaths: 8,
+  hotwordsScore: 2.5
+});
+```
+
+---
+
+## StreamingSttInitOptions
+
+Configuration options for creating streaming STT engine with `createStreamingSTT()`.
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model directory path configuration.
+</ParamField>
+
+<ParamField path="modelType" type="OnlineSTTModelType | 'auto'" required>
+  Online model type or `'auto'` to detect from model directory.
+  
+  Supported types: `'transducer'`, `'paraformer'`, `'zipformer2_ctc'`, `'nemo_ctc'`, `'tone_ctc'`
+</ParamField>
+
+<ParamField path="enableEndpoint" type="boolean" default={true}>
+  Enable endpoint (end of utterance) detection.
+</ParamField>
+
+<ParamField path="endpointConfig" type="EndpointConfig">
+  Endpoint detection rules. See [EndpointConfig](#endpointconfig).
+</ParamField>
+
+<ParamField path="decodingMethod" type="'greedy_search' | 'modified_beam_search'" default="greedy_search">
+  Decoding method.
+</ParamField>
+
+<ParamField path="maxActivePaths" type="number" default={4}>
+  Max active paths for beam search.
+</ParamField>
+
+<ParamField path="hotwordsFile" type="string">
+  Path to hotwords file (transducer/nemo_transducer only).
+</ParamField>
+
+<ParamField path="hotwordsScore" type="number" default={1.5}>
+  Hotwords score.
+</ParamField>
+
+<ParamField path="numThreads" type="number" default={1}>
+  Number of inference threads.
+</ParamField>
+
+<ParamField path="provider" type="string">
+  Execution provider (e.g. `"cpu"`).
+</ParamField>
+
+<ParamField path="ruleFsts" type="string">
+  Path(s) to rule FSTs for ITN.
+</ParamField>
+
+<ParamField path="ruleFars" type="string">
+  Path(s) to rule FARs for ITN.
+</ParamField>
+
+<ParamField path="blankPenalty" type="number">
+  Blank penalty for CTC models.
+</ParamField>
+
+<ParamField path="debug" type="boolean" default={false}>
+  Enable debug logging.
+</ParamField>
+
+<ParamField path="enableInputNormalization" type="boolean" default={true}>
+  Enable adaptive input normalization for audio chunks in `processAudioChunk()`.
+  
+  When `true`, input is scaled so peak is ~0.8 to handle varying device levels (e.g. quiet mics on iOS). Set to `false` if audio is already in expected range [-1, 1].
+</ParamField>
+
+### Example
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer' },
+  modelType: 'transducer',
+  enableEndpoint: true,
+  decodingMethod: 'greedy_search',
+  enableInputNormalization: true
+});
+```
+
+---
+
+## EndpointConfig
+
+Endpoint detection configuration for streaming STT. Three rules evaluated in order; first match determines end of utterance.
+
+<ParamField path="rule1" type="EndpointRule">
+  Rule 1: e.g. 2.4s trailing silence, no speech required.
+</ParamField>
+
+<ParamField path="rule2" type="EndpointRule">
+  Rule 2: e.g. 1.4s trailing silence, speech required.
+</ParamField>
+
+<ParamField path="rule3" type="EndpointRule">
+  Rule 3: e.g. max utterance length 20s.
+</ParamField>
+
+### EndpointRule
+
+<ParamField path="mustContainNonSilence" type="boolean" required>
+  If `true`, rule only matches when segment contains non-silence.
+</ParamField>
+
+<ParamField path="minTrailingSilence" type="number" required>
+  Minimum trailing silence in seconds.
+</ParamField>
+
+<ParamField path="minUtteranceLength" type="number" required>
+  Minimum utterance length in seconds (acts as max length cap).
+</ParamField>
+
+### Example
+
+```typescript
+endpointConfig: {
+  rule1: {
+    mustContainNonSilence: false,
+    minTrailingSilence: 2.4,
+    minUtteranceLength: 0.0
+  },
+  rule2: {
+    mustContainNonSilence: true,
+    minTrailingSilence: 1.4,
+    minUtteranceLength: 0.0
+  },
+  rule3: {
+    mustContainNonSilence: false,
+    minTrailingSilence: 0.0,
+    minUtteranceLength: 20.0
+  }
+}
+```
+
+---
+
+## Model-Specific Options
+
+### SttModelOptions
+
+Container for model-specific configuration. Only options for the loaded model type are applied.
+
+<ParamField path="whisper" type="SttWhisperModelOptions">
+  Options for Whisper models.
+</ParamField>
+
+<ParamField path="senseVoice" type="SttSenseVoiceModelOptions">
+  Options for SenseVoice models.
+</ParamField>
+
+<ParamField path="canary" type="SttCanaryModelOptions">
+  Options for Canary models.
+</ParamField>
+
+<ParamField path="funasrNano" type="SttFunAsrNanoModelOptions">
+  Options for FunASR Nano models.
+</ParamField>
+
+---
+
+### SttWhisperModelOptions
+
+Applied only when `modelType` is `'whisper'`.
+
+<ParamField path="language" type="string" default="en">
+  Language code (e.g. `"en"`, `"de"`, `"zh"`). Used with multilingual models.
+</ParamField>
+
+<ParamField path="task" type="'transcribe' | 'translate'" default="transcribe">
+  Task mode. With `"translate"`, result text is always in English.
+</ParamField>
+
+<ParamField path="tailPaddings" type="number" default={1000}>
+  Padding at end of samples. Kotlin default: 1000; C++ default: -1.
+</ParamField>
+
+<ParamField path="enableTokenTimestamps" type="boolean">
+  Enable token-level timestamps. Android only; ignored on iOS.
+</ParamField>
+
+<ParamField path="enableSegmentTimestamps" type="boolean">
+  Enable segment-level timestamps. Android only; ignored on iOS.
+</ParamField>
+
+**Example:**
+
+```typescript
+modelOptions: {
+  whisper: {
+    language: 'de',
+    task: 'transcribe',
+    tailPaddings: 1000
+  }
+}
+```
+
+---
+
+### SttSenseVoiceModelOptions
+
+Applied only when `modelType` is `'sense_voice'`.
+
+<ParamField path="language" type="string">
+  Language hint.
+</ParamField>
+
+<ParamField path="useItn" type="boolean" default={true}>
+  Inverse text normalization. Default: `true` (Kotlin), `false` (C++).
+</ParamField>
+
+**Example:**
+
+```typescript
+modelOptions: {
+  senseVoice: {
+    language: 'zh',
+    useItn: true
+  }
+}
+```
+
+---
+
+### SttCanaryModelOptions
+
+Applied only when `modelType` is `'canary'`.
+
+<ParamField path="srcLang" type="string" default="en">
+  Source language code.
+</ParamField>
+
+<ParamField path="tgtLang" type="string" default="en">
+  Target language code.
+</ParamField>
+
+<ParamField path="usePnc" type="boolean" default={true}>
+  Use punctuation.
+</ParamField>
+
+**Example:**
+
+```typescript
+modelOptions: {
+  canary: {
+    srcLang: 'de',
+    tgtLang: 'en',
+    usePnc: true
+  }
+}
+```
+
+---
+
+### SttFunAsrNanoModelOptions
+
+Applied only when `modelType` is `'funasr_nano'`.
+
+<ParamField path="systemPrompt" type="string" default="You are a helpful assistant.">
+  System prompt.
+</ParamField>
+
+<ParamField path="userPrompt" type="string" default="语音转写：">
+  User prompt prefix.
+</ParamField>
+
+<ParamField path="maxNewTokens" type="number" default={512}>
+  Maximum new tokens.
+</ParamField>
+
+<ParamField path="temperature" type="number" default={1e-6}>
+  Sampling temperature.
+</ParamField>
+
+<ParamField path="topP" type="number" default={0.8}>
+  Top-p sampling.
+</ParamField>
+
+<ParamField path="seed" type="number" default={42}>
+  Random seed.
+</ParamField>
+
+<ParamField path="language" type="string">
+  Language hint.
+</ParamField>
+
+<ParamField path="itn" type="boolean" default={true}>
+  Inverse text normalization.
+</ParamField>
+
+<ParamField path="hotwords" type="string">
+  Hotwords string.
+</ParamField>
+
+**Example:**
+
+```typescript
+modelOptions: {
+  funasrNano: {
+    systemPrompt: 'You are a medical transcription assistant.',
+    maxNewTokens: 256,
+    temperature: 0.7,
+    language: 'zh',
+    itn: true
+  }
+}
+```

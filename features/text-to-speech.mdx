@@ -1,0 +1,460 @@
+---
+title: 'Text-to-Speech'
+description: 'Generate natural speech from text with customizable voices'
+icon: 'volume-high'
+---
+
+## Overview
+
+The TTS module enables high-quality speech synthesis from text. Generate complete audio buffers, adjust voice parameters, and save to files. Supports multiple model architectures with voice cloning capabilities.
+
+## Quick Start
+
+```typescript
+import { createTTS, saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+
+// 1) Create TTS engine
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en_US' },
+  modelType: 'auto',
+  numThreads: 2,
+});
+
+// 2) Generate speech
+const audio = await tts.generateSpeech('Hello, world!');
+console.log('Sample rate:', audio.sampleRate);
+console.log('Samples:', audio.samples.length);
+
+// 3) Save to file
+await saveAudioToFile(audio, '/path/to/output.wav');
+
+// 4) Cleanup
+await tts.destroy();
+```
+
+## Supported Model Types
+
+| Model Type | Description | Features |
+|------------|-------------|----------|
+| `vits` | VITS (Piper) | Multi-speaker, noise/length control |
+| `matcha` | Matcha-TTS | Fast, flow-matching |
+| `kokoro` | Kokoro | Length scale control |
+| `kitten` | Kitten | Compact model |
+| `pocket` | Pocket TTS | Voice cloning, temperature control |
+| `zipvoice` | ZipVoice | Zero-shot voice cloning |
+
+Use `modelType: 'auto'` for automatic detection.
+
+## Generate Speech
+
+### Basic Generation
+
+```typescript
+const audio = await tts.generateSpeech('Hello, world!');
+
+console.log(audio.samples);     // Float32 PCM in [-1, 1]
+console.log(audio.sampleRate);  // e.g., 22050 Hz
+```
+
+### With Options
+
+```typescript
+const audio = await tts.generateSpeech('Hello, world!', {
+  sid: 0,           // Speaker ID (multi-speaker models)
+  speed: 1.2,       // Speech speed multiplier
+  silenceScale: 0.3,
+});
+```
+
+### Generation Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `sid` | `number` | Speaker ID for multi-speaker models (default: 0) |
+| `speed` | `number` | Speed multiplier (default: 1.0) |
+| `silenceScale` | `number` | Silence scale |
+| `referenceAudio` | `{ samples, sampleRate }` | For voice cloning |
+| `referenceText` | `string` | Transcript of reference audio |
+| `numSteps` | `number` | Flow-matching steps (model-dependent) |
+| `extra` | `Record<string, string>` | Model-specific options |
+
+## Generate with Timestamps
+
+Get word/phoneme timing information:
+
+```typescript
+const result = await tts.generateSpeechWithTimestamps('Hello, world!', {
+  sid: 0,
+  speed: 1.0,
+});
+
+console.log(result.samples);     // Audio samples
+console.log(result.sampleRate);  // Sample rate
+console.log(result.subtitles);   // Subtitle data
+console.log(result.estimated);   // true if timestamps estimated
+```
+
+## Model-Specific Configuration
+
+### VITS
+
+Control voice characteristics:
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,    // Voice variation
+      noiseScaleW: 0.8,     // Duration variation
+      lengthScale: 1.0,     // Speech speed
+    },
+  },
+});
+```
+
+### Kokoro
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/kokoro' },
+  modelType: 'kokoro',
+  modelOptions: {
+    kokoro: {
+      lengthScale: 1.2,  // Slower speech
+    },
+  },
+});
+```
+
+### Matcha
+
+```typescript
+modelOptions: {
+  matcha: {
+    noiseScale: 0.667,
+    lengthScale: 1.0,
+  },
+}
+```
+
+### Kitten
+
+```typescript
+modelOptions: {
+  kitten: {
+    noiseScale: 0.667,
+    lengthScale: 1.0,
+  },
+}
+```
+
+## Update Parameters at Runtime
+
+Change voice parameters without reloading the model:
+
+```typescript
+await tts.updateParams({
+  modelOptions: {
+    vits: {
+      noiseScale: 0.7,
+      lengthScale: 1.2,
+    },
+  },
+});
+
+const audio = await tts.generateSpeech('This uses new parameters.');
+```
+
+## Voice Cloning
+
+Clone a voice using reference audio (Pocket, ZipVoice models):
+
+```typescript
+// Load reference audio
+const refAudio = await loadAudioFile('/path/to/reference.wav');
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/zipvoice' },
+  modelType: 'zipvoice',
+});
+
+const audio = await tts.generateSpeech('Hello in cloned voice', {
+  referenceAudio: {
+    samples: refAudio.samples,
+    sampleRate: refAudio.sampleRate,
+  },
+  referenceText: 'Transcript of the reference audio',
+  numSteps: 20,
+  speed: 1.0,
+});
+```
+
+### Pocket TTS Extra Options
+
+```typescript
+const audio = await tts.generateSpeech('Hello, world!', {
+  referenceAudio: { samples, sampleRate },
+  referenceText: 'Reference transcript',
+  extra: {
+    temperature: '0.7',
+    chunk_size: '15',
+  },
+});
+```
+
+## Multi-Speaker Models
+
+```typescript
+// Check available speakers
+const numSpeakers = await tts.getNumSpeakers();
+console.log(`Model has ${numSpeakers} speakers`);
+
+// Generate with different speakers
+const audio1 = await tts.generateSpeech('Speaker 0', { sid: 0 });
+const audio2 = await tts.generateSpeech('Speaker 1', { sid: 1 });
+```
+
+## Save Audio to File
+
+### Standard File Path
+
+```typescript
+import { saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+
+const audio = await tts.generateSpeech('Hello, world!');
+await saveAudioToFile(audio, '/path/to/output.wav');
+```
+
+### Android SAF (Storage Access Framework)
+
+Save to user-selected directories:
+
+```typescript
+import { saveAudioToContentUri } from 'react-native-sherpa-onnx/tts';
+
+const contentUri = await saveAudioToContentUri(
+  audio,
+  'content://com.android.externalstorage.documents/tree/primary%3ADownload',
+  'output.wav'
+);
+
+console.log('Saved to:', contentUri);
+```
+
+### Copy to Cache
+
+```typescript
+import { copyContentUriToCache } from 'react-native-sherpa-onnx/tts';
+
+const cachedPath = await copyContentUriToCache(contentUri, 'audio.wav');
+// Now use cachedPath for playback or sharing
+```
+
+## Audio Format Conversion
+
+Convert WAV to other formats:
+
+```typescript
+import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio';
+
+// Generate speech
+const audio = await tts.generateSpeech('Hello, world!');
+await saveAudioToFile(audio, '/tmp/temp.wav');
+
+// Convert to MP3
+const mp3Path = await convertAudioToFormat(
+  '/tmp/temp.wav',
+  '/path/to/output.mp3',
+  {
+    format: 'mp3',
+    bitrate: 128000,
+    sampleRate: 44100,
+  }
+);
+```
+
+## Get Model Information
+
+```typescript
+const sampleRate = await tts.getSampleRate();
+console.log('Model sample rate:', sampleRate);
+
+const numSpeakers = await tts.getNumSpeakers();
+console.log('Number of speakers:', numSpeakers);
+
+const info = await tts.getModelInfo();
+console.log('Model info:', info);
+```
+
+## Advanced Configuration
+
+### Text Normalization
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  ruleFsts: '/path/to/rule1.fst,/path/to/rule2.fst',
+  ruleFars: '/path/to/rule.far',
+});
+```
+
+### Config-Level Options
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  maxNumSentences: 1,      // Sentences per streaming callback
+  silenceScale: 0.2,       // Default silence scale
+  numThreads: 4,           // CPU threads
+  provider: 'cpu',         // Execution provider
+});
+```
+
+## ZipVoice Models
+
+### Full vs Distill
+
+- **Full ZipVoice:** Encoder + decoder + vocoder (e.g., `vocos_24khz.onnx`)
+  - Required for initialization
+  - ~605 MB compressed (fp32)
+  - Needs ~8 GB RAM
+
+- **ZipVoice Distill:** Encoder + decoder only (no vocoder)
+  - Will **fail** initialization (vocoder required)
+  - Use full model or int8 variant instead
+
+### Memory Requirements
+
+For devices with **less than 8 GB RAM**, use the int8 quantized variant:
+
+```typescript
+const tts = await createTTS({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia',
+  },
+  modelType: 'zipvoice',
+});
+```
+
+The SDK checks free memory before loading and provides actionable errors if insufficient.
+
+## Best Practices
+
+### Memory Management
+
+```typescript
+try {
+  const tts = await createTTS(config);
+  const audio = await tts.generateSpeech('Hello, world!');
+  return audio;
+} finally {
+  await tts.destroy();
+}
+```
+
+### Resampling for Playback
+
+If model outputs 22050 Hz but playback expects 48000 Hz:
+
+```typescript
+import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio';
+
+const audio = await tts.generateSpeech('Hello');
+await saveAudioToFile(audio, '/tmp/temp.wav');
+
+const resampled = await convertAudioToFormat(
+  '/tmp/temp.wav',
+  '/tmp/output.wav',
+  { sampleRate: 48000 }
+);
+```
+
+### Performance Tips
+
+- **Threading:** Increase `numThreads` on multi-core devices
+- **Quantization:** Use int8 models for faster generation
+- **Batch processing:** Reuse engine for multiple generations
+- **Pre-warm:** Generate a short sample at startup to avoid first-use latency
+
+## Error Handling
+
+```typescript
+try {
+  const tts = await createTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper' },
+    modelType: 'auto',
+  });
+  
+  const audio = await tts.generateSpeech('Hello, world!');
+  await saveAudioToFile(audio, '/path/to/output.wav');
+  
+  await tts.destroy();
+} catch (error) {
+  if (error.message.includes('Not enough free memory')) {
+    console.error('Use int8 model or close other apps');
+  } else {
+    console.error('TTS error:', error.message);
+  }
+}
+```
+
+## Complete Example
+
+```typescript
+import { createTTS, saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio';
+
+async function generateAndSaveSpeech(text: string, outputPath: string) {
+  const tts = await createTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper-en_US' },
+    modelType: 'vits',
+    numThreads: 4,
+    modelOptions: {
+      vits: {
+        noiseScale: 0.667,
+        lengthScale: 1.0,
+      },
+    },
+  });
+  
+  try {
+    const audio = await tts.generateSpeech(text, {
+      sid: 0,
+      speed: 1.0,
+    });
+    
+    // Save WAV
+    const wavPath = '/tmp/temp.wav';
+    await saveAudioToFile(audio, wavPath);
+    
+    // Convert to MP3
+    await convertAudioToFormat(wavPath, outputPath, {
+      format: 'mp3',
+      bitrate: 128000,
+      sampleRate: 44100,
+    });
+    
+    console.log('Saved to:', outputPath);
+  } finally {
+    await tts.destroy();
+  }
+}
+
+await generateAndSaveSpeech('Hello, world!', '/path/to/output.mp3');
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Streaming TTS" icon="tower-broadcast" href="/features/streaming-tts">
+    Low-latency incremental speech generation
+  </Card>
+  <Card title="Model Setup" icon="download" href="/setup/models">
+    Download and configure TTS models
+  </Card>
+</CardGroup>

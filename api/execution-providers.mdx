@@ -1,0 +1,269 @@
+---
+title: 'Execution Providers'
+description: 'Check hardware acceleration support and available ONNX Runtime providers'
+icon: 'microchip'
+---
+
+## Overview
+
+Execution provider functions help you detect and utilize hardware acceleration on different platforms. All `get*Support` functions return a unified `AccelerationSupport` object.
+
+```typescript AccelerationSupport Type
+type AccelerationSupport = {
+  providerCompiled: boolean;  // Whether the provider is compiled into ORT
+  hasAccelerator: boolean;    // Whether hardware accelerator is present
+  canInit: boolean;           // Whether a session can initialize with this provider
+};
+```
+
+---
+
+## getQnnSupport
+
+Check QNN (Qualcomm Neural Network SDK) support on Android devices with Qualcomm NPU/DSP.
+
+<CodeGroup>
+```typescript Function Signature
+function getQnnSupport(
+  modelBase64?: string
+): Promise<AccelerationSupport>
+```
+
+```typescript Example
+import { getQnnSupport } from 'react-native-sherpa-onnx';
+
+const support = await getQnnSupport();
+if (support.providerCompiled && support.hasAccelerator && support.canInit) {
+  console.log('QNN acceleration is fully supported');
+  // Use provider: 'qnn' in initialization
+} else {
+  console.log('QNN not available, falling back to CPU');
+}
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="modelBase64" type="string">
+  Optional base64-encoded test model for session initialization test. If omitted, SDK uses an embedded test model.
+</ParamField>
+
+### Returns
+
+<ResponseField name="providerCompiled" type="boolean">
+  Whether QNN execution provider is compiled into ONNX Runtime
+</ResponseField>
+
+<ResponseField name="hasAccelerator" type="boolean">
+  Whether Qualcomm NPU/DSP hardware is present
+</ResponseField>
+
+<ResponseField name="canInit" type="boolean">
+  Whether an ONNX Runtime session can initialize with QNN provider
+</ResponseField>
+
+<Note>
+**Android only.** Returns `{ providerCompiled: false, hasAccelerator: false, canInit: false }` on iOS.
+</Note>
+
+---
+
+## getNnapiSupport
+
+Check NNAPI (Android Neural Networks API) support on Android devices.
+
+<CodeGroup>
+```typescript Function Signature
+function getNnapiSupport(
+  modelBase64?: string
+): Promise<AccelerationSupport>
+```
+
+```typescript Example
+import { getNnapiSupport } from 'react-native-sherpa-onnx';
+
+const support = await getNnapiSupport();
+if (support.canInit) {
+  console.log('NNAPI available for acceleration');
+} else {
+  console.log('NNAPI not available on this device');
+}
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="modelBase64" type="string">
+  Optional base64-encoded test model for session initialization test. If omitted, SDK uses an embedded test model.
+</ParamField>
+
+### Returns
+
+<ResponseField name="providerCompiled" type="boolean">
+  Whether NNAPI execution provider is compiled into ONNX Runtime
+</ResponseField>
+
+<ResponseField name="hasAccelerator" type="boolean">
+  Whether NNAPI-compatible hardware is present
+</ResponseField>
+
+<ResponseField name="canInit" type="boolean">
+  Whether an ONNX Runtime session can initialize with NNAPI provider
+</ResponseField>
+
+<Note>
+**Android only.** Returns all `false` on iOS. NNAPI is available on Android 8.1+ (API 27+).
+</Note>
+
+---
+
+## getXnnpackSupport
+
+Check XNNPACK (CPU-optimized inference) support. XNNPACK provides optimized operators for ARM and x86 CPUs.
+
+<CodeGroup>
+```typescript Function Signature
+function getXnnpackSupport(
+  modelBase64?: string
+): Promise<AccelerationSupport>
+```
+
+```typescript Example
+import { getXnnpackSupport } from 'react-native-sherpa-onnx';
+
+const support = await getXnnpackSupport();
+if (support.providerCompiled) {
+  console.log('XNNPACK CPU optimization available');
+  // Note: hasAccelerator is true when providerCompiled (CPU-optimized)
+}
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="modelBase64" type="string">
+  Optional base64-encoded test model for session initialization test. If omitted, SDK uses an embedded test model.
+</ParamField>
+
+### Returns
+
+<ResponseField name="providerCompiled" type="boolean">
+  Whether XNNPACK execution provider is compiled into ONNX Runtime
+</ResponseField>
+
+<ResponseField name="hasAccelerator" type="boolean">
+  Same as `providerCompiled` for XNNPACK (CPU-optimized execution counts as "acceleration")
+</ResponseField>
+
+<ResponseField name="canInit" type="boolean">
+  Whether an ONNX Runtime session can initialize with XNNPACK provider
+</ResponseField>
+
+<Note>
+**Android only.** Returns all `false` on iOS. XNNPACK provides CPU optimizations without requiring dedicated hardware accelerators.
+</Note>
+
+---
+
+## getCoreMlSupport
+
+Check Core ML support on iOS devices. Core ML can leverage Apple Neural Engine (ANE) on supported devices.
+
+<CodeGroup>
+```typescript Function Signature
+function getCoreMlSupport(
+  modelBase64?: string
+): Promise<AccelerationSupport>
+```
+
+```typescript Example
+import { getCoreMlSupport } from 'react-native-sherpa-onnx';
+
+const support = await getCoreMlSupport();
+if (support.hasAccelerator) {
+  console.log('Apple Neural Engine available');
+} else if (support.canInit) {
+  console.log('Core ML available (CPU/GPU only)');
+}
+```
+</CodeGroup>
+
+### Parameters
+
+<ParamField path="modelBase64" type="string">
+  Optional base64-encoded test model for session initialization test. If omitted, SDK uses an embedded test model.
+</ParamField>
+
+### Returns
+
+<ResponseField name="providerCompiled" type="boolean">
+  Whether Core ML execution provider is compiled into ONNX Runtime (true on iOS 11+)
+</ResponseField>
+
+<ResponseField name="hasAccelerator" type="boolean">
+  Whether Apple Neural Engine is present (A11 Bionic or newer)
+</ResponseField>
+
+<ResponseField name="canInit" type="boolean">
+  Whether an ONNX Runtime session can initialize with Core ML provider
+</ResponseField>
+
+<Note>
+**iOS only.** Returns all `false` on Android. Core ML is available on iOS 11+, with ANE support on A11+ chips (iPhone 8/X and newer).
+</Note>
+
+---
+
+## getAvailableProviders
+
+Return the list of available ONNX Runtime execution providers on the current device.
+
+<CodeGroup>
+```typescript Function Signature
+function getAvailableProviders(): Promise<string[]>
+```
+
+```typescript Example
+import { getAvailableProviders } from 'react-native-sherpa-onnx';
+
+const providers = await getAvailableProviders();
+console.log('Available providers:', providers);
+// Example output: ["CPU", "NNAPI", "XNNPACK"]
+
+// Check for specific provider
+if (providers.includes('QNN')) {
+  console.log('QNN provider available');
+}
+```
+</CodeGroup>
+
+### Returns
+
+<ResponseField name="providers" type="string[]">
+  Array of provider names. Common values:
+  - `"CPU"` - Always available
+  - `"NNAPI"` - Android Neural Networks API
+  - `"QNN"` - Qualcomm Neural Network SDK
+  - `"XNNPACK"` - CPU-optimized inference
+  - `"CoreML"` - Apple Core ML (iOS)
+</ResponseField>
+
+<Warning>
+Requires the ORT Java bridge (`libonnxruntime4j_jni.so` + `OrtEnvironment` class) from the `onnxruntime` AAR on Android. On iOS, requires Core ML support in the ONNX Runtime build.
+</Warning>
+
+---
+
+## Platform Support Matrix
+
+| Provider | Android | iOS | Hardware Required |
+|----------|---------|-----|-------------------|
+| CPU | ✅ | ✅ | None (always available) |
+| NNAPI | ✅ | ❌ | Android 8.1+ (API 27+) |
+| QNN | ✅ | ❌ | Qualcomm NPU/DSP |
+| XNNPACK | ✅ | ❌ | None (CPU optimization) |
+| Core ML | ❌ | ✅ | iOS 11+ (ANE on A11+) |
+
+<Tip>
+Always check provider support before specifying a provider in initialization. Fall back to `'cpu'` if the desired provider is not available.
+</Tip>

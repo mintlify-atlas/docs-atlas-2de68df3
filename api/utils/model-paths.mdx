@@ -1,0 +1,338 @@
+---
+title: Model Path Utilities
+description: Helper functions for managing model paths across platforms
+---
+
+Utility functions for handling model paths in React Native Sherpa-ONNX. These helpers abstract platform differences between iOS and Android, supporting both bundled assets and file system models.
+
+## Path Configuration Functions
+
+### assetModelPath()
+
+Create a model path configuration for bundled asset models.
+
+```typescript
+function assetModelPath(assetPath: string): ModelPathConfig
+```
+
+<ParamField path="assetPath" type="string" required>
+  Path relative to assets directory (e.g., `"models/sherpa-onnx-model"`)
+</ParamField>
+
+<ResponseField name="ModelPathConfig" type="object">
+  Configuration object with `type: 'asset'` and the specified path
+</ResponseField>
+
+**Example:**
+```typescript
+import { assetModelPath, createTTS } from 'react-native-sherpa-onnx';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+  modelType: 'vits',
+});
+```
+
+---
+
+### fileModelPath()
+
+Create a model path configuration for file system models.
+
+```typescript
+function fileModelPath(filePath: string): ModelPathConfig
+```
+
+<ParamField path="filePath" type="string" required>
+  Absolute path to model directory. On iOS, use absolute paths from react-native-fs (e.g., `DocumentDirectoryPath + '/models/' + modelName`)
+</ParamField>
+
+<ResponseField name="ModelPathConfig" type="object">
+  Configuration object with `type: 'file'` and the specified path
+</ResponseField>
+
+**Example:**
+```typescript
+import { fileModelPath, createTTS } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const modelPath = `${DocumentDirectoryPath}/models/downloaded-model`;
+const tts = await createTTS({
+  modelPath: fileModelPath(modelPath),
+  modelType: 'vits',
+});
+```
+
+---
+
+### autoModelPath()
+
+Create a model path configuration with automatic path type detection.
+
+```typescript
+function autoModelPath(path: string): ModelPathConfig
+```
+
+<ParamField path="path" type="string" required>
+  Path to check (tries asset first, then file system)
+</ParamField>
+
+<ResponseField name="ModelPathConfig" type="object">
+  Configuration object with `type: 'auto'` and the specified path
+</ResponseField>
+
+**Example:**
+```typescript
+import { autoModelPath, createTTS } from 'react-native-sherpa-onnx';
+
+const tts = await createTTS({
+  modelPath: autoModelPath('models/vits-piper-en'),
+  modelType: 'vits',
+});
+```
+
+---
+
+### resolveModelPath()
+
+Resolve a model path configuration to a platform-specific absolute path.
+
+```typescript
+function resolveModelPath(config: ModelPathConfig): Promise<string>
+```
+
+<ParamField path="config" type="ModelPathConfig" required>
+  Model path configuration (from `assetModelPath()`, `fileModelPath()`, or `autoModelPath()`)
+</ParamField>
+
+<ResponseField name="string" type="Promise<string>">
+  Absolute path usable by native code
+</ResponseField>
+
+**Example:**
+```typescript
+import { assetModelPath, resolveModelPath } from 'react-native-sherpa-onnx';
+
+const config = assetModelPath('models/vits-piper-en');
+const absolutePath = await resolveModelPath(config);
+console.log('Resolved path:', absolutePath);
+// iOS: /path/to/bundle/models/vits-piper-en
+// Android: /data/data/com.app/files/models/vits-piper-en
+```
+
+---
+
+## Directory Management
+
+### getDefaultModelPath()
+
+Get the default model directory path for the current platform.
+
+```typescript
+function getDefaultModelPath(): string
+```
+
+<ResponseField name="string" type="string">
+  Platform-specific default path:
+  - iOS: `'Documents/models'`
+  - Android: `'models'`
+</ResponseField>
+
+<Note>
+  This returns a logical name, not an absolute path. On iOS, pass an absolute base path to `fileModelPath()` instead (e.g., `DocumentDirectoryPath + '/models'` from react-native-fs).
+</Note>
+
+**Example:**
+```typescript
+import { getDefaultModelPath } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+import { Platform } from 'react-native';
+
+const defaultPath = getDefaultModelPath();
+console.log('Default model path:', defaultPath);
+
+// Convert to absolute path on iOS
+if (Platform.OS === 'ios') {
+  const absolutePath = `${DocumentDirectoryPath}/models`;
+}
+```
+
+---
+
+### getPlayAssetDeliveryModelsPath()
+
+Get the path to models in an Android Play Asset Delivery pack.
+
+```typescript
+function getPlayAssetDeliveryModelsPath(packName: string): Promise<string | null>
+```
+
+<ParamField path="packName" type="string" required>
+  Name of the asset pack (e.g., `"sherpa_models"`)
+</ParamField>
+
+<ResponseField name="string | null" type="Promise<string | null>">
+  Path to the models directory inside the pack, or `null` if pack is not available or on iOS
+</ResponseField>
+
+**Example:**
+```typescript
+import { getPlayAssetDeliveryModelsPath, listModelsAtPath } from 'react-native-sherpa-onnx';
+
+const packPath = await getPlayAssetDeliveryModelsPath('sherpa_models');
+if (packPath) {
+  const models = await listModelsAtPath(packPath, true);
+  console.log('Models in pack:', models);
+}
+```
+
+<Note>
+  This function is Android-only and requires Play Asset Delivery configuration. Returns `null` on iOS.
+</Note>
+
+---
+
+## Model Discovery
+
+### listAssetModels()
+
+List all model folders in the bundled assets/models directory.
+
+```typescript
+function listAssetModels(): Promise<Array<{
+  folder: string;
+  hint: 'stt' | 'tts' | 'unknown';
+}>>
+```
+
+<ResponseField name="models" type="Array<object>">
+  Array of model info objects:
+  - `folder`: Model folder name
+  - `hint`: Detected model type hint
+</ResponseField>
+
+**Example:**
+```typescript
+import { listAssetModels, resolveModelPath, createTTS } from 'react-native-sherpa-onnx';
+
+// Get all bundled models
+const models = await listAssetModels();
+console.log('Found models:', models);
+// Output: [
+//   { folder: 'vits-piper-en', hint: 'tts' },
+//   { folder: 'zipformer-en-2023', hint: 'stt' }
+// ]
+
+// Initialize TTS models
+for (const model of models) {
+  if (model.hint === 'tts') {
+    const path = await resolveModelPath({
+      type: 'asset',
+      path: `models/${model.folder}`
+    });
+    const tts = await createTTS({ modelPath: { type: 'asset', path: `models/${model.folder}` } });
+    console.log(`Initialized TTS model: ${model.folder}`);
+  }
+}
+```
+
+---
+
+### listModelsAtPath()
+
+List model folders under a specific filesystem path.
+
+```typescript
+function listModelsAtPath(
+  path: string,
+  recursive?: boolean
+): Promise<Array<{
+  folder: string;
+  hint: 'stt' | 'tts' | 'unknown';
+}>>
+```
+
+<ParamField path="path" type="string" required>
+  Filesystem path to search
+</ParamField>
+
+<ParamField path="recursive" type="boolean" default="false">
+  When `true`, returns relative folder paths under the base path
+</ParamField>
+
+<ResponseField name="models" type="Array<object>">
+  Array of model info objects:
+  - `folder`: Model folder name (relative if `recursive: true`)
+  - `hint`: Detected model type hint
+</ResponseField>
+
+**Example:**
+```typescript
+import { listModelsAtPath } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+// List downloaded models
+const modelsPath = `${DocumentDirectoryPath}/sherpa-onnx/models/tts`;
+const models = await listModelsAtPath(modelsPath);
+console.log('Downloaded models:', models);
+
+// Recursive search
+const allModels = await listModelsAtPath(modelsPath, true);
+console.log('All models (recursive):', allModels);
+```
+
+---
+
+## Type Definitions
+
+### ModelPathConfig
+
+Model path configuration type:
+
+```typescript
+type ModelPathConfig =
+  | {
+      type: 'asset';
+      path: string; // Path relative to app assets
+    }
+  | {
+      type: 'file';
+      path: string; // Absolute filesystem path
+    }
+  | {
+      type: 'auto';
+      path: string; // Tries asset first, then file
+    };
+```
+
+## Platform Considerations
+
+### iOS
+
+- Asset models are loaded from the app bundle
+- Use absolute paths with `DocumentDirectoryPath` for file models
+- Play Asset Delivery is not supported (returns `null`)
+
+### Android
+
+- Asset models are loaded from the APK assets folder
+- Supports Play Asset Delivery for on-demand model downloads
+- File models use internal storage by default
+
+## Best Practices
+
+1. **Use `assetModelPath()` for bundled models**: Keep small models in your app bundle for instant availability
+
+2. **Use `fileModelPath()` for downloaded models**: Large models should be downloaded at runtime to reduce app size
+
+3. **Use `autoModelPath()` for flexible deployment**: Let the SDK automatically detect whether a model is bundled or downloaded
+
+4. **Combine with model download manager**: Use the download manager for large model distribution
+
+5. **Handle platform differences**: Use `Platform.OS` checks when dealing with absolute paths
+
+## Related APIs
+
+- [TTS API](/api/tts/engine) - Text-to-speech engine
+- [STT API](/api/stt/engine) - Speech-to-text recognition
+- [Download Manager](/api/utils/download-manager) - Model download and management

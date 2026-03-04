@@ -1,0 +1,36 @@
+---
+title: 'Initialization'
+description: 'Test sherpa-onnx native library initialization'
+icon: 'play'
+---
+
+## testSherpaInit
+
+Test method to verify that the sherpa-onnx native library is loaded and functioning correctly.
+
+<CodeGroup>
+```typescript Function Signature
+function testSherpaInit(): Promise<string>
+```
+
+```typescript Example
+import { testSherpaInit } from 'react-native-sherpa-onnx';
+
+try {
+  const result = await testSherpaInit();
+  console.log('Sherpa initialized:', result);
+} catch (error) {
+  console.error('Initialization failed:', error);
+}
+```
+</CodeGroup>
+
+### Returns
+
+<ResponseField name="result" type="string">
+  A success message indicating the native library is loaded and ready
+</ResponseField>
+
+<Note>
+This function is useful for debugging and verifying that the native module is properly linked and accessible before attempting to use STT or TTS features.
+</Note>

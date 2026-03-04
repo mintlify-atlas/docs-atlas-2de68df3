@@ -1,0 +1,302 @@
+---
+title: "createStreamingSTT"
+description: "Create online STT engine for real-time audio transcription"
+---
+
+## createStreamingSTT()
+
+Creates a streaming (online) STT engine for real-time recognition with partial results and endpoint detection. Use this for live transcription from microphones or audio streams.
+
+```typescript
+function createStreamingSTT(
+  options: StreamingSttInitOptions
+): Promise<StreamingSttEngine>
+```
+
+### Parameters
+
+<ParamField path="options" type="StreamingSttInitOptions" required>
+  Streaming STT initialization options. See [StreamingSttInitOptions](/api/stt/configuration#streamingsttiintoptions).
+</ParamField>
+
+### Returns
+
+Promise resolving to a [`StreamingSttEngine`](#streamingsttengine) instance.
+
+### Example
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'transducer',
+  enableEndpoint: true,
+  endpointConfig: {
+    rule2: {
+      mustContainNonSilence: true,
+      minTrailingSilence: 1.4,
+      minUtteranceLength: 0.0
+    }
+  }
+});
+
+const stream = await engine.createStream();
+await stream.acceptWaveform(samples, 16000);
+
+if (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  console.log('Partial:', result.text);
+}
+
+await stream.release();
+await engine.destroy();
+```
+
+---
+
+## StreamingSttEngine
+
+Streaming STT engine interface returned by `createStreamingSTT()`.
+
+### Properties
+
+<ParamField path="instanceId" type="string" readonly>
+  Unique identifier for this engine instance.
+</ParamField>
+
+### Methods
+
+#### createStream()
+
+Create a new recognition stream for this engine. Multiple streams can be active simultaneously.
+
+```typescript
+createStream(hotwords?: string): Promise<SttStream>
+```
+
+<ParamField path="hotwords" type="string">
+  Optional hotwords/keywords string for contextual biasing (transducer/nemo_transducer only).
+</ParamField>
+
+**Returns:** Promise resolving to an [`SttStream`](#sttstream) instance.
+
+**Example:**
+
+```typescript
+const stream = await engine.createStream('OpenAI /ˌoʊpən eɪ aɪ/');
+```
+
+#### destroy()
+
+Release native recognizer and all streams. Cannot be used after calling this.
+
+```typescript
+destroy(): Promise<void>
+```
+
+---
+
+## SttStream
+
+Streaming recognition stream. Created by `StreamingSttEngine.createStream()`.
+
+### Properties
+
+<ParamField path="streamId" type="string" readonly>
+  Unique identifier for this stream.
+</ParamField>
+
+### Methods
+
+#### acceptWaveform()
+
+Feed PCM audio samples to the stream.
+
+```typescript
+acceptWaveform(samples: number[], sampleRate: number): Promise<void>
+```
+
+<ParamField path="samples" type="number[]" required>
+  PCM audio samples as float values in range [-1, 1].
+</ParamField>
+
+<ParamField path="sampleRate" type="number" required>
+  Sample rate in Hz (typically 16000).
+</ParamField>
+
+**Example:**
+
+```typescript
+await stream.acceptWaveform(audioChunk, 16000);
+```
+
+#### isReady()
+
+Check if there's enough audio to run decoding.
+
+```typescript
+isReady(): Promise<boolean>
+```
+
+**Returns:** `true` if decode can be called.
+
+#### decode()
+
+Run decoding on accumulated audio. Call when `isReady()` returns `true`.
+
+```typescript
+decode(): Promise<void>
+```
+
+#### getResult()
+
+Get current partial or final recognition result. Call after `decode()`.
+
+```typescript
+getResult(): Promise<StreamingSttResult>
+```
+
+**Returns:** Promise resolving to [`StreamingSttResult`](/api/stt/types#streamingsttresult).
+
+**Example:**
+
+```typescript
+if (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  console.log('Text:', result.text);
+  console.log('Tokens:', result.tokens);
+}
+```
+
+#### isEndpoint()
+
+Check if endpoint (end of utterance) was detected based on configured rules.
+
+```typescript
+isEndpoint(): Promise<boolean>
+```
+
+**Returns:** `true` if endpoint detected.
+
+**Example:**
+
+```typescript
+if (await stream.isEndpoint()) {
+  const final = await stream.getResult();
+  console.log('Final utterance:', final.text);
+  await stream.reset();
+}
+```
+
+#### reset()
+
+Reset stream state for reuse (clears audio buffer and recognition state).
+
+```typescript
+reset(): Promise<void>
+```
+
+#### inputFinished()
+
+Signal that no more audio will be fed to the stream.
+
+```typescript
+inputFinished(): Promise<void>
+```
+
+#### release()
+
+Release native stream resources. Do not use the stream after calling this.
+
+```typescript
+release(): Promise<void>
+```
+
+#### processAudioChunk()
+
+Convenience method that feeds audio, auto-decodes while ready, and returns result with endpoint status. Reduces bridge round-trips from 5 to 1 per chunk.
+
+```typescript
+processAudioChunk(
+  samples: number[],
+  sampleRate: number
+): Promise<{
+  result: StreamingSttResult;
+  isEndpoint: boolean;
+}>
+```
+
+<ParamField path="samples" type="number[]" required>
+  PCM audio samples. Automatically normalized if `enableInputNormalization` was `true` (default).
+</ParamField>
+
+<ParamField path="sampleRate" type="number" required>
+  Sample rate in Hz.
+</ParamField>
+
+**Returns:** Object with `result` and `isEndpoint` boolean.
+
+**Example:**
+
+```typescript
+const { result, isEndpoint } = await stream.processAudioChunk(
+  audioChunk,
+  16000
+);
+
+console.log('Current text:', result.text);
+
+if (isEndpoint) {
+  console.log('End of utterance detected');
+  await stream.reset();
+}
+```
+
+---
+
+## Utility Functions
+
+### mapDetectedToOnlineType()
+
+Map detected offline STT model type to streaming (online) model type. Throws if model doesn't support streaming.
+
+```typescript
+function mapDetectedToOnlineType(
+  detectedType: string | undefined
+): OnlineSTTModelType
+```
+
+**Example:**
+
+```typescript
+const detected = await detectSttModel(modelPath);
+const onlineType = mapDetectedToOnlineType(detected.modelType);
+// Returns 'transducer', 'paraformer', 'zipformer2_ctc', etc.
+```
+
+### getOnlineTypeOrNull()
+
+Returns streaming model type for a detected model, or `null` if streaming is not supported.
+
+```typescript
+function getOnlineTypeOrNull(
+  detectedType: string | undefined
+): OnlineSTTModelType | null
+```
+
+**Example:**
+
+```typescript
+const detected = await detectSttModel(modelPath);
+const canStream = getOnlineTypeOrNull(detected.modelType);
+
+if (canStream) {
+  const engine = await createStreamingSTT({
+    modelPath,
+    modelType: canStream
+  });
+} else {
+  console.log('Model does not support streaming');
+}
+```

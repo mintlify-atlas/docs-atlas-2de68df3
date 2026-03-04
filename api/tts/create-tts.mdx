@@ -1,0 +1,419 @@
+---
+title: 'createTTS()'
+description: 'Create a batch TTS engine for one-shot speech synthesis'
+---
+
+## createTTS()
+
+Creates a TTS (Text-to-Speech) engine instance for batch speech generation. Use this for one-shot synthesis where you generate complete audio files at once.
+
+For streaming synthesis with chunk callbacks, use [`createStreamingTTS()`](/api/tts/streaming-tts) instead.
+
+```typescript
+function createTTS(
+  options: TTSInitializeOptions | ModelPathConfig
+): Promise<TtsEngine>
+```
+
+### Parameters
+
+<ParamField path="options" type="TTSInitializeOptions | ModelPathConfig" required>
+  TTS initialization options. Can be either:
+  - Full `TTSInitializeOptions` object with model path and configuration
+  - Simple `ModelPathConfig` for quick initialization with defaults
+  
+  See [Configuration](/api/tts/configuration#ttsinitializeoptions) for details.
+</ParamField>
+
+### Returns
+
+Returns a `Promise` that resolves to a [`TtsEngine`](#ttsengine) instance.
+
+### Example
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx';
+
+// Initialize TTS with full options
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+  numThreads: 4,
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      lengthScale: 1.0,
+    },
+  },
+});
+
+// Generate speech
+const audio = await tts.generateSpeech('Hello, world!');
+console.log(`Generated ${audio.samples.length} samples at ${audio.sampleRate}Hz`);
+
+// Clean up
+await tts.destroy();
+```
+
+### Quick initialization
+
+```typescript
+// Simple initialization with just a model path
+const tts = await createTTS({
+  type: 'asset',
+  path: 'models/vits-piper-en',
+});
+```
+
+---
+
+## TtsEngine
+
+The TTS engine interface returned by `createTTS()`. Provides methods for batch speech synthesis and model information.
+
+### Properties
+
+<ParamField path="instanceId" type="string" readonly>
+  Unique identifier for this TTS engine instance.
+</ParamField>
+
+### Methods
+
+#### generateSpeech()
+
+Generates complete audio for the given text.
+
+```typescript
+generateSpeech(
+  text: string,
+  options?: TtsGenerationOptions
+): Promise<GeneratedAudio>
+```
+
+<ParamField path="text" type="string" required>
+  The text to synthesize into speech.
+</ParamField>
+
+<ParamField path="options" type="TtsGenerationOptions">
+  Optional generation parameters (speaker ID, speed, voice cloning, etc.).
+  
+  See [Configuration](/api/tts/configuration#ttsgenerationoptions) for details.
+</ParamField>
+
+**Returns:** `Promise<GeneratedAudio>` - Generated audio samples and sample rate.
+
+**Example:**
+
+```typescript
+const audio = await tts.generateSpeech('Hello world', {
+  sid: 0,
+  speed: 1.2,
+});
+```
+
+---
+
+#### generateSpeechWithTimestamps()
+
+Generates audio with word-level timestamps for subtitles.
+
+```typescript
+generateSpeechWithTimestamps(
+  text: string,
+  options?: TtsGenerationOptions
+): Promise<GeneratedAudioWithTimestamps>
+```
+
+<ParamField path="text" type="string" required>
+  The text to synthesize into speech.
+</ParamField>
+
+<ParamField path="options" type="TtsGenerationOptions">
+  Optional generation parameters.
+</ParamField>
+
+**Returns:** `Promise<GeneratedAudioWithTimestamps>` - Audio with subtitle/timestamp metadata.
+
+**Example:**
+
+```typescript
+const result = await tts.generateSpeechWithTimestamps('Hello world');
+
+console.log('Audio:', result.samples.length, 'samples');
+console.log('Timestamps:');
+result.subtitles.forEach((item) => {
+  console.log(`  ${item.text}: ${item.start}s - ${item.end}s`);
+});
+```
+
+---
+
+#### updateParams()
+
+Updates model-specific parameters at runtime without reloading the model.
+
+```typescript
+updateParams(options: TtsUpdateOptions): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+}>
+```
+
+<ParamField path="options" type="TtsUpdateOptions" required>
+  Parameters to update (noise scale, length scale, etc.).
+  
+  See [Configuration](/api/tts/configuration#ttsupdateoptions) for details.
+</ParamField>
+
+**Returns:** Promise resolving to update result with success status.
+
+**Example:**
+
+```typescript
+await tts.updateParams({
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.8,
+      lengthScale: 1.1,
+    },
+  },
+});
+```
+
+---
+
+#### getModelInfo()
+
+Returns model capabilities (sample rate and number of speakers).
+
+```typescript
+getModelInfo(): Promise<TTSModelInfo>
+```
+
+**Returns:** Promise resolving to model information.
+
+**Example:**
+
+```typescript
+const info = await tts.getModelInfo();
+console.log(`Sample rate: ${info.sampleRate}Hz`);
+console.log(`Speakers: ${info.numSpeakers}`);
+```
+
+---
+
+#### getSampleRate()
+
+Returns the sample rate at which the model generates audio.
+
+```typescript
+getSampleRate(): Promise<number>
+```
+
+**Returns:** Promise resolving to sample rate in Hz (e.g., 22050, 44100).
+
+---
+
+#### getNumSpeakers()
+
+Returns the number of speakers/voices available in the model.
+
+```typescript
+getNumSpeakers(): Promise<number>
+```
+
+**Returns:** Promise resolving to number of speakers:
+- `0` or `1` = single-speaker model
+- `> 1` = multi-speaker model
+
+**Example:**
+
+```typescript
+const numSpeakers = await tts.getNumSpeakers();
+if (numSpeakers > 1) {
+  // Generate with different speakers
+  const audio1 = await tts.generateSpeech('Hello', { sid: 0 });
+  const audio2 = await tts.generateSpeech('Hello', { sid: 1 });
+}
+```
+
+---
+
+#### destroy()
+
+Releases native resources. **Always call this when done** to prevent memory leaks.
+
+```typescript
+destroy(): Promise<void>
+```
+
+**Example:**
+
+```typescript
+try {
+  const audio = await tts.generateSpeech('Hello');
+  // Use audio...
+} finally {
+  await tts.destroy();
+}
+```
+
+---
+
+## Utility Functions
+
+### detectTtsModel()
+
+Detects TTS model type without initializing an engine. Useful for validating models before initialization.
+
+```typescript
+function detectTtsModel(
+  modelPath: ModelPathConfig,
+  options?: { modelType?: TTSModelType }
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>
+```
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Path to the model directory to detect.
+</ParamField>
+
+<ParamField path="options.modelType" type="TTSModelType">
+  Optional hint for model type. Default: `'auto'`
+</ParamField>
+
+**Returns:** Detection result with model type and directory information.
+
+**Example:**
+
+```typescript
+import { detectTtsModel } from 'react-native-sherpa-onnx';
+
+const result = await detectTtsModel({
+  type: 'asset',
+  path: 'models/vits-piper-en',
+});
+
+if (result.success) {
+  console.log('Detected model type:', result.modelType);
+  console.log('Models found:', result.detectedModels);
+} else {
+  console.error('Model detection failed');
+}
+```
+
+---
+
+### saveAudioToFile()
+
+Saves generated audio to a WAV file.
+
+```typescript
+function saveAudioToFile(
+  audio: GeneratedAudio,
+  filePath: string
+): Promise<string>
+```
+
+<ParamField path="audio" type="GeneratedAudio" required>
+  The generated audio to save.
+</ParamField>
+
+<ParamField path="filePath" type="string" required>
+  Destination file path (e.g., `/path/to/output.wav`).
+</ParamField>
+
+**Returns:** Promise resolving to the saved file path.
+
+**Example:**
+
+```typescript
+import { createTTS, saveAudioToFile } from 'react-native-sherpa-onnx';
+import RNFS from 'react-native-fs';
+
+const tts = await createTTS({ type: 'asset', path: 'models/vits-piper-en' });
+const audio = await tts.generateSpeech('Hello world');
+
+const outputPath = `${RNFS.DocumentDirectoryPath}/speech.wav`;
+await saveAudioToFile(audio, outputPath);
+console.log('Saved to:', outputPath);
+
+await tts.destroy();
+```
+
+---
+
+### saveAudioToContentUri() (Android only)
+
+Saves audio to a file using Android Storage Access Framework (SAF).
+
+```typescript
+function saveAudioToContentUri(
+  audio: GeneratedAudio,
+  directoryUri: string,
+  filename: string
+): Promise<string>
+```
+
+<ParamField path="audio" type="GeneratedAudio" required>
+  The generated audio to save.
+</ParamField>
+
+<ParamField path="directoryUri" type="string" required>
+  SAF directory content URI.
+</ParamField>
+
+<ParamField path="filename" type="string" required>
+  Filename for the saved file (e.g., `"speech.wav"`).
+</ParamField>
+
+**Returns:** Promise resolving to the content URI of the saved file.
+
+---
+
+### shareAudioFile()
+
+Shares an audio file using the system share dialog.
+
+```typescript
+function shareAudioFile(
+  fileUri: string,
+  mimeType?: string
+): Promise<void>
+```
+
+<ParamField path="fileUri" type="string" required>
+  File path or content URI to share.
+</ParamField>
+
+<ParamField path="mimeType" type="string">
+  MIME type of the file. Default: `'audio/wav'`
+</ParamField>
+
+**Example:**
+
+```typescript
+import { createTTS, saveAudioToFile, shareAudioFile } from 'react-native-sherpa-onnx';
+import RNFS from 'react-native-fs';
+
+const tts = await createTTS({ type: 'asset', path: 'models/vits-piper-en' });
+const audio = await tts.generateSpeech('Check out this audio!');
+
+const filePath = `${RNFS.CachesDirectoryPath}/share.wav`;
+await saveAudioToFile(audio, filePath);
+await shareAudioFile(filePath);
+
+await tts.destroy();
+```
+
+---
+
+## See Also
+
+- [Streaming TTS](/api/tts/streaming-tts) - For incremental generation with chunk callbacks
+- [Configuration](/api/tts/configuration) - Detailed configuration options
+- [Types](/api/tts/types) - TypeScript type definitions

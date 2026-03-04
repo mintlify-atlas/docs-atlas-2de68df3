@@ -1,0 +1,317 @@
+---
+title: Installation
+description: Install and configure react-native-sherpa-onnx for iOS and Android
+---
+
+# Installation
+
+Install the React Native Sherpa-ONNX SDK and configure it for your platform.
+
+## Install Package
+
+<CodeGroup>
+```bash npm
+npm install react-native-sherpa-onnx
+```
+
+```bash yarn
+yarn add react-native-sherpa-onnx
+```
+
+```bash pnpm
+pnpm add react-native-sherpa-onnx
+```
+</CodeGroup>
+
+### Peer Dependencies
+
+The SDK requires `@dr.pogodin/react-native-fs` for file system operations:
+
+<CodeGroup>
+```bash npm
+npm install @dr.pogodin/react-native-fs
+```
+
+```bash yarn
+yarn add @dr.pogodin/react-native-fs
+```
+
+```bash pnpm
+pnpm add @dr.pogodin/react-native-fs
+```
+</CodeGroup>
+
+<Warning>
+  **Yarn v3+ / Plug'n'Play Users**: If you use Yarn with PnP, configure the Node Modules linker to avoid postinstall issues:
+  
+  ```yaml .yarnrc.yml
+  nodeLinker: node-modules
+  ```
+  
+  Or set the environment variable during install:
+  
+  ```bash
+  YARN_NODE_LINKER=node-modules yarn install
+  ```
+</Warning>
+
+## Platform Setup
+
+<Tabs>
+  <Tab title="Android">
+    ### Android Configuration
+
+    **No additional setup required!** The library automatically handles native dependencies via Gradle.
+
+    The SDK includes:
+    - **sherpa-onnx native libraries** - Automatically downloaded during build
+    - **ONNX Runtime** - Bundled with execution provider support
+    - **Hardware acceleration** - CPU, NNAPI, XNNPACK, and QNN support
+
+    #### Optional: QNN (Qualcomm Neural Network) Setup
+
+    For Qualcomm Snapdragon devices with AI accelerator support:
+
+    <Steps>
+      <Step title="Check device support">
+        QNN provides hardware acceleration on Qualcomm Snapdragon chipsets with AI Engine (Hexagon DSP).
+
+        ```typescript
+        import { getQnnSupport } from 'react-native-sherpa-onnx';
+
+        const support = await getQnnSupport();
+        console.log('QNN available:', support.providerCompiled);
+        console.log('QNN accelerator:', support.hasAccelerator);
+        console.log('Can initialize:', support.canInit);
+        ```
+      </Step>
+
+      <Step title="Configure execution provider">
+        Pass `provider: 'qnn'` when initializing STT or TTS:
+
+        ```typescript
+        const stt = await createSTT({
+          modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+          provider: 'qnn', // Use QNN acceleration
+        });
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+      See [Execution Provider Support](/guides/execution-providers) for details on NNAPI, XNNPACK, and QNN configuration.
+    </Note>
+
+    #### Build from Source (Advanced)
+
+    To build Android native libraries yourself:
+
+    ```bash
+    cd node_modules/react-native-sherpa-onnx
+    # See third_party/sherpa-onnx-prebuilt/README.md for build instructions
+    ```
+
+    Release versions are pinned in `third_party/sherpa-onnx-prebuilt/ANDROID_RELEASE_TAG`.
+  </Tab>
+
+  <Tab title="iOS">
+    ### iOS Configuration
+
+    The sherpa-onnx XCFramework (~80MB) is **automatically downloaded** when you run `pod install`. No manual steps required.
+
+    <Steps>
+      <Step title="Install dependencies">
+        Navigate to your iOS directory and install pods:
+
+        ```bash
+        cd ios
+        bundle install
+        bundle exec pod install
+        ```
+
+        The podspec automatically:
+        - Downloads the XCFramework from GitHub Releases
+        - Compiles libarchive from source (for model archive support)
+        - Links everything correctly
+      </Step>
+
+      <Step title="Verify installation">
+        After pod install completes, you should see:
+
+        ```
+        Installing react-native-sherpa-onnx (x.x.x)
+        Downloading sherpa-onnx XCFramework...
+        Building libarchive...
+        ```
+      </Step>
+
+      <Step title="Build your app">
+        Build and run normally:
+
+        ```bash
+        npx react-native run-ios
+        ```
+
+        Or open the workspace in Xcode:
+
+        ```bash
+        open ios/YourApp.xcworkspace
+        ```
+      </Step>
+    </Steps>
+
+    #### Version Information
+
+    - **XCFramework version**: Pinned in `third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG`
+    - **libarchive version**: Pinned in `third_party/libarchive_prebuilt/IOS_RELEASE_TAG`
+    - **Download source**: [GitHub Releases](https://github.com/XDcobra/react-native-sherpa-onnx/releases?q=framework)
+
+    #### Core ML Acceleration
+
+    iOS devices automatically use Core ML for hardware acceleration when available:
+
+    ```typescript
+    import { getCoreMlSupport } from 'react-native-sherpa-onnx';
+
+    const support = await getCoreMlSupport();
+    console.log('Core ML available:', support.providerCompiled);
+    console.log('Neural Engine:', support.hasAccelerator); // Apple Neural Engine
+    ```
+
+    To explicitly use Core ML:
+
+    ```typescript
+    const tts = await createTTS({
+      modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+      provider: 'coreml', // Use Core ML
+    });
+    ```
+
+    #### Build Framework Locally (Advanced)
+
+    If you need a custom sherpa-onnx build:
+
+    <Accordion title="Building the XCFramework yourself">
+      The repo does not include an iOS build script. To build locally:
+
+      1. **Use the CI workflow**: The [build-sherpa-onnx-ios-framework](.github/workflows/build-sherpa-onnx-ios-framework.yml) workflow produces the XCFramework. You can run equivalent steps locally.
+
+      2. **Manual build**: See the workflow for exact build steps, including:
+         - Building `libsherpa-onnx-cxx-api.a` (C++ API)
+         - Merging static libraries
+         - Creating the XCFramework with multiple architectures
+
+      3. **Place the framework**: After building, place `sherpa-onnx.xcframework` in `ios/Frameworks/` before running `pod install`.
+
+      The XCFramework **must include the C++ API** (`libsherpa-onnx-cxx-api.a` merged) so that the iOS Obj-C++ code can use `sherpa_onnx::cxx::*` classes.
+    </Accordion>
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+Test that the native library loads correctly:
+
+```typescript App.tsx
+import { useEffect } from 'react';
+import { testSherpaInit } from 'react-native-sherpa-onnx';
+
+export default function App() {
+  useEffect(() => {
+    testSherpaInit()
+      .then((result) => console.log('Sherpa-ONNX initialized:', result))
+      .catch((err) => console.error('Initialization failed:', err));
+  }, []);
+
+  return <Text>Testing Sherpa-ONNX...</Text>;
+}
+```
+
+Expected output:
+```
+Sherpa-ONNX initialized: sherpa-onnx native library loaded successfully
+```
+
+## Check Execution Providers
+
+Verify available hardware acceleration:
+
+```typescript
+import { getAvailableProviders } from 'react-native-sherpa-onnx';
+
+const providers = await getAvailableProviders();
+console.log('Available providers:', providers);
+// Example output: ['CPU', 'CoreML', 'XNNPACK'] on iOS
+// Example output: ['CPU', 'NNAPI', 'XNNPACK', 'QNN'] on Android
+```
+
+<Note>
+  **Next Step**: Follow the [Quick Start Guide](/quickstart) to transcribe your first audio file or generate speech.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="iOS: XCFramework download fails">
+    If `pod install` fails to download the XCFramework:
+
+    1. **Check internet connection**: The framework is ~80MB and requires a stable connection.
+    2. **Manual download**: Download from [GitHub Releases](https://github.com/XDcobra/react-native-sherpa-onnx/releases?q=framework) and place in `node_modules/react-native-sherpa-onnx/ios/Frameworks/`.
+    3. **Check version**: Ensure the release tag matches `third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG`.
+  </Accordion>
+
+  <Accordion title="Android: Build fails with native library errors">
+    Common issues:
+
+    - **Gradle sync**: Run `cd android && ./gradlew clean` then rebuild.
+    - **NDK version**: Ensure you have NDK 21 or later installed.
+    - **Memory**: Gradle may need more memory. Add to `android/gradle.properties`:
+      ```properties
+      org.gradle.jvmargs=-Xmx4096m
+      ```
+  </Accordion>
+
+  <Accordion title="Yarn PnP issues">
+    If using Yarn v3+ with Plug'n'Play:
+
+    ```yaml .yarnrc.yml
+    nodeLinker: node-modules
+    ```
+
+    Or use the environment variable:
+    ```bash
+    YARN_NODE_LINKER=node-modules yarn install
+    ```
+  </Accordion>
+
+  <Accordion title="Missing peer dependency error">
+    Install the required peer dependency:
+
+    ```bash
+    npm install @dr.pogodin/react-native-fs
+    ```
+
+    Then rebuild:
+    ```bash
+    cd ios && pod install
+    cd android && ./gradlew clean
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first speech recognition app
+  </Card>
+  <Card title="Download Models" icon="download" href="/guides/model-setup">
+    Learn how to download and bundle models
+  </Card>
+  <Card title="STT API Reference" icon="microphone" href="/api/stt">
+    Explore speech-to-text features
+  </Card>
+  <Card title="TTS API Reference" icon="volume-high" href="/api/tts">
+    Explore text-to-speech features
+  </Card>
+</CardGroup>

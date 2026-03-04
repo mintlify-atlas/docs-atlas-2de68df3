@@ -1,0 +1,348 @@
+---
+title: Audio Helper Functions
+description: Utilities for saving, sharing, and managing generated audio files
+---
+
+Helper functions for working with generated TTS audio. These utilities handle saving to files, Android Storage Access Framework (SAF), and sharing audio across apps.
+
+## File Operations
+
+### saveAudioToFile()
+
+Save generated TTS audio to a WAV file.
+
+```typescript
+function saveAudioToFile(
+  audio: GeneratedAudio,
+  filePath: string
+): Promise<string>
+```
+
+<ParamField path="audio" type="GeneratedAudio" required>
+  Generated audio object from `generateSpeech()` or `generateSpeechWithTimestamps()`
+  
+  **Properties:**
+  - `samples`: Float32Array of audio samples
+  - `sampleRate`: Sample rate in Hz (e.g., 22050, 24000)
+</ParamField>
+
+<ParamField path="filePath" type="string" required>
+  Absolute path where the WAV file should be saved
+</ParamField>
+
+<ResponseField name="path" type="Promise<string>">
+  The absolute path of the saved file
+</ResponseField>
+
+**Example:**
+```typescript
+import { createTTS, saveAudioToFile } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+const audio = await tts.generateSpeech('Hello, world!');
+const outputPath = `${DocumentDirectoryPath}/output.wav`;
+const savedPath = await saveAudioToFile(audio, outputPath);
+console.log('Audio saved to:', savedPath);
+```
+
+---
+
+### saveAudioToContentUri()
+
+Save generated TTS audio to a WAV file via Android Storage Access Framework (SAF).
+
+```typescript
+function saveAudioToContentUri(
+  audio: GeneratedAudio,
+  directoryUri: string,
+  filename: string
+): Promise<string>
+```
+
+<ParamField path="audio" type="GeneratedAudio" required>
+  Generated audio object from `generateSpeech()`
+</ParamField>
+
+<ParamField path="directoryUri" type="string" required>
+  SAF directory content URI (obtained from `react-native-document-picker` or `react-native-fs`)
+</ParamField>
+
+<ParamField path="filename" type="string" required>
+  Filename for the WAV file (e.g., `"speech.wav"`)
+</ParamField>
+
+<ResponseField name="uri" type="Promise<string>">
+  Content URI of the saved file
+</ResponseField>
+
+<Note>
+  This function is Android-only. Use `saveAudioToFile()` on iOS or when working with app-internal storage.
+</Note>
+
+**Example:**
+```typescript
+import { createTTS, saveAudioToContentUri } from 'react-native-sherpa-onnx';
+import DocumentPicker from 'react-native-document-picker';
+
+// Let user pick a directory
+const result = await DocumentPicker.pickDirectory();
+if (!result) return;
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+const audio = await tts.generateSpeech('Hello, Android!');
+const uri = await saveAudioToContentUri(
+  audio,
+  result.uri,
+  'output.wav'
+);
+console.log('Audio saved to content URI:', uri);
+```
+
+---
+
+### copyContentUriToCache()
+
+Copy a file from an Android SAF content URI to app cache for local playback.
+
+```typescript
+function copyContentUriToCache(
+  fileUri: string,
+  filename: string
+): Promise<string>
+```
+
+<ParamField path="fileUri" type="string" required>
+  SAF content URI of the source file
+</ParamField>
+
+<ParamField path="filename" type="string" required>
+  Filename for the cached copy
+</ParamField>
+
+<ResponseField name="path" type="Promise<string>">
+  Absolute path of the cached file
+</ResponseField>
+
+<Note>
+  This function is Android-only. Use this when you need to play audio from a content URI with media players that don't support content URIs.
+</Note>
+
+**Example:**
+```typescript
+import { saveAudioToContentUri, copyContentUriToCache } from 'react-native-sherpa-onnx';
+import Sound from 'react-native-sound';
+
+const tts = await createTTS({ modelPath: { type: 'asset', path: 'models/vits-piper-en' } });
+const audio = await tts.generateSpeech('Test audio');
+
+// Save to user-selected directory
+const contentUri = await saveAudioToContentUri(audio, directoryUri, 'test.wav');
+
+// Copy to cache for playback
+const cachePath = await copyContentUriToCache(contentUri, 'test.wav');
+
+// Play the cached file
+const sound = new Sound(cachePath, '', (error) => {
+  if (!error) sound.play();
+});
+```
+
+---
+
+## Sharing
+
+### shareAudioFile()
+
+Share a TTS audio file using the system share sheet.
+
+```typescript
+function shareAudioFile(
+  fileUri: string,
+  mimeType?: string
+): Promise<void>
+```
+
+<ParamField path="fileUri" type="string" required>
+  File path or content URI to share
+  - iOS: Absolute file path
+  - Android: File path or content URI (e.g., from `saveAudioToContentUri()`)
+</ParamField>
+
+<ParamField path="mimeType" type="string" default="'audio/wav'">
+  MIME type of the audio file
+</ParamField>
+
+<ResponseField name="void" type="Promise<void>">
+  Resolves when the share sheet is dismissed
+</ResponseField>
+
+**Example:**
+```typescript
+import { createTTS, saveAudioToFile, shareAudioFile } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+const audio = await tts.generateSpeech('Share this audio');
+const filePath = `${DocumentDirectoryPath}/share-audio.wav`;
+await saveAudioToFile(audio, filePath);
+
+// Share via system share sheet
+await shareAudioFile(filePath);
+```
+
+**Android SAF Example:**
+```typescript
+import { saveAudioToContentUri, shareAudioFile } from 'react-native-sherpa-onnx';
+
+const audio = await tts.generateSpeech('Share via content URI');
+const contentUri = await saveAudioToContentUri(audio, directoryUri, 'share.wav');
+
+// Share content URI (Android only)
+await shareAudioFile(contentUri, 'audio/wav');
+```
+
+---
+
+## Type Definitions
+
+### GeneratedAudio
+
+Generated audio data structure:
+
+```typescript
+type GeneratedAudio = {
+  samples: Float32Array;  // Audio samples in floating-point format
+  sampleRate: number;     // Sample rate in Hz (e.g., 22050, 24000)
+};
+```
+
+### GeneratedAudioWithTimestamps
+
+Extended audio data with word/phoneme timestamps:
+
+```typescript
+type GeneratedAudioWithTimestamps = {
+  samples: Float32Array;
+  sampleRate: number;
+  timestamps: TtsSubtitleItem[]; // Word/phoneme timing information
+};
+
+type TtsSubtitleItem = {
+  text: string;      // Word or phoneme text
+  start: number;     // Start time in seconds
+  end: number;       // End time in seconds
+};
+```
+
+---
+
+## Platform Considerations
+
+### iOS
+
+- Use `saveAudioToFile()` with paths from `DocumentDirectoryPath` or `CachesDirectoryPath`
+- `saveAudioToContentUri()` is not available
+- `copyContentUriToCache()` is not available
+- `shareAudioFile()` uses `UIActivityViewController`
+
+### Android
+
+- `saveAudioToFile()` works with internal storage paths
+- `saveAudioToContentUri()` enables saving to external storage via SAF (SD card, Downloads, etc.)
+- `copyContentUriToCache()` bridges content URIs to file paths
+- `shareAudioFile()` supports both file paths and content URIs via `Intent.ACTION_SEND`
+
+---
+
+## Best Practices
+
+1. **Use appropriate storage based on use case:**
+   - Internal storage (`saveAudioToFile`): Temporary audio, app-only access
+   - SAF (`saveAudioToContentUri`): User-selected location, persistent storage
+
+2. **Handle platform differences:**
+   ```typescript
+   import { Platform } from 'react-native';
+   
+   if (Platform.OS === 'android') {
+     // Use SAF for external storage
+     await saveAudioToContentUri(audio, directoryUri, 'audio.wav');
+   } else {
+     // Use file path on iOS
+     await saveAudioToFile(audio, `${DocumentDirectoryPath}/audio.wav`);
+   }
+   ```
+
+3. **Clean up temporary files:**
+   ```typescript
+   import { unlink } from '@dr.pogodin/react-native-fs';
+   
+   const tempPath = `${CachesDirectoryPath}/temp.wav`;
+   await saveAudioToFile(audio, tempPath);
+   await shareAudioFile(tempPath);
+   
+   // Clean up after sharing
+   await unlink(tempPath);
+   ```
+
+4. **Validate file paths:**
+   ```typescript
+   import { exists } from '@dr.pogodin/react-native-fs';
+   
+   const path = await saveAudioToFile(audio, outputPath);
+   const fileExists = await exists(path);
+   if (!fileExists) {
+     throw new Error('Failed to save audio file');
+   }
+   ```
+
+5. **Use descriptive filenames:**
+   ```typescript
+   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+   const filename = `tts-output-${timestamp}.wav`;
+   await saveAudioToFile(audio, `${DocumentDirectoryPath}/${filename}`);
+   ```
+
+---
+
+## Error Handling
+
+```typescript
+try {
+  const audio = await tts.generateSpeech('Hello');
+  const path = await saveAudioToFile(
+    audio,
+    `${DocumentDirectoryPath}/output.wav`
+  );
+  console.log('Success:', path);
+} catch (error) {
+  if (error.message.includes('No such file or directory')) {
+    console.error('Invalid file path');
+  } else if (error.message.includes('Permission denied')) {
+    console.error('Storage permission required');
+  } else {
+    console.error('Failed to save audio:', error);
+  }
+}
+```
+
+---
+
+## Related APIs
+
+- [TTS Engine API](/api/tts/engine) - Generate speech audio
+- [Streaming TTS API](/api/tts/streaming) - Real-time audio generation
+- [Model Paths](/api/utils/model-paths) - Model path management

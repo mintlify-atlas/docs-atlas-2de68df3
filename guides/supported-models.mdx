@@ -1,0 +1,234 @@
+---
+title: Supported Models
+description: Complete list of supported STT and TTS model types with download links and requirements
+icon: database
+---
+
+This page lists all supported model types for Speech-to-Text (STT) and Text-to-Speech (TTS), including required files and download links.
+
+## Speech-to-Text (STT) Models
+
+<Note>
+For **real-time (streaming) recognition** from a microphone or audio stream, use streaming-capable model types: `transducer`, `paraformer`, `zipformer2_ctc`, `nemo_ctc`, or `tone_ctc`.
+
+See the [Streaming STT](/api-reference/stt-streaming) documentation for details.
+</Note>
+
+<CardGroup cols={1}>
+  <Card title="Zipformer/Transducer" icon="waveform">
+    **Model Type:** `transducer`
+    
+    **Required Files:**
+    - `encoder.onnx`
+    - `decoder.onnx`
+    - `joiner.onnx`
+    - `tokens.txt`
+    
+    **Download:** [Offline Transducer Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/index.html)
+  </Card>
+
+  <Card title="Paraformer" icon="waveform">
+    **Model Type:** `paraformer`
+    
+    **Required Files:**
+    - `model.onnx` (or `model.int8.onnx`)
+    - `tokens.txt`
+    
+    **Download:** [Offline Paraformer Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-paraformer/index.html)
+  </Card>
+
+  <Card title="NeMo CTC" icon="waveform">
+    **Model Type:** `nemo_ctc`
+    
+    **Required Files:**
+    - `model.onnx` (or `model.int8.onnx`)
+    - `tokens.txt`
+    
+    **Download:** [NeMo CTC Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-ctc/nemo/index.html)
+  </Card>
+
+  <Card title="Whisper" icon="waveform">
+    **Model Type:** `whisper`
+    
+    **Required Files:**
+    - `encoder.onnx`
+    - `decoder.onnx`
+    - `tokens.txt`
+    
+    **Download:** [Whisper Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/whisper/index.html)
+  </Card>
+
+  <Card title="WeNet CTC" icon="waveform">
+    **Model Type:** `wenet_ctc`
+    
+    **Required Files:**
+    - `model.onnx` (or `model.int8.onnx`)
+    - `tokens.txt`
+    
+    **Download:** [WeNet CTC Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-ctc/wenet/index.html)
+  </Card>
+
+  <Card title="SenseVoice" icon="waveform">
+    **Model Type:** `sense_voice`
+    
+    **Required Files:**
+    - `model.onnx` (or `model.int8.onnx`)
+    - `tokens.txt`
+    
+    **Download:** [SenseVoice Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/sense-voice/index.html)
+  </Card>
+
+  <Card title="FunASR Nano" icon="waveform">
+    **Model Type:** `funasr_nano`
+    
+    **Required Files:**
+    - `encoder_adaptor.onnx`
+    - `llm.onnx`
+    - `embedding.onnx`
+    - `tokenizer/` directory
+    
+    **Download:** [FunASR Nano Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/funasr-nano/index.html)
+  </Card>
+
+  <Card title="Tone CTC (t-one)" icon="waveform">
+    **Model Type:** `tone_ctc`
+    
+    **Required Files:**
+    - `model.onnx`
+    - `tokens.txt`
+    
+    **Note:** Folder name usually contains `t-one`, `t_one` or `tone`
+    
+    **Download:** [Online CTC Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-ctc/index.html)
+  </Card>
+</CardGroup>
+
+## Text-to-Speech (TTS) Models
+
+<Note>
+For **streaming TTS** (incremental generation, low latency), use `createStreamingTTS()` with supported model types.
+
+See the [Streaming TTS](/api-reference/tts-streaming) documentation for details.
+</Note>
+
+<CardGroup cols={1}>
+  <Card title="VITS" icon="volume">
+    **Model Type:** `vits`
+    
+    **Description:** Fast, high-quality TTS. Includes Piper, Coqui, MeloTTS, MMS variants.
+    
+    **Required Files:**
+    - `model.onnx`
+    - `tokens.txt`
+    
+    **Download:** [TTS Models Release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)
+  </Card>
+
+  <Card title="Matcha" icon="volume">
+    **Model Type:** `matcha`
+    
+    **Description:** High-quality acoustic model + vocoder
+    
+    **Required Files:**
+    - `acoustic_model.onnx`
+    - `vocoder.onnx`
+    - `tokens.txt`
+    
+    **Download:** [Matcha Models](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/matcha.html)
+  </Card>
+
+  <Card title="Kokoro" icon="volume">
+    **Model Type:** `kokoro`
+    
+    **Description:** Multi-speaker, multi-language
+    
+    **Required Files:**
+    - `model.onnx`
+    - `voices.bin`
+    - `tokens.txt`
+    - `espeak-ng-data/` directory
+    
+    **Download:** [TTS Models Release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)
+  </Card>
+
+  <Card title="KittenTTS" icon="volume">
+    **Model Type:** `kitten`
+    
+    **Description:** Lightweight, multi-speaker
+    
+    **Required Files:**
+    - `model.onnx`
+    - `voices.bin`
+    - `tokens.txt`
+    - `espeak-ng-data/` directory
+    
+    **Download:** [TTS Models Release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)
+  </Card>
+
+  <Card title="Zipvoice" icon="volume">
+    **Model Type:** `zipvoice`
+    
+    **Description:** Voice cloning capable
+    
+    **Required Files:**
+    - `encoder.onnx`
+    - `decoder.onnx`
+    - `vocoder.onnx`
+    - `tokens.txt`
+    
+    **Download:** [Zipvoice Models](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/zipvoice.html)
+  </Card>
+
+  <Card title="Pocket" icon="volume">
+    **Model Type:** `pocket`
+    
+    **Description:** Flow-matching TTS
+    
+    **Required Files:**
+    - `lm_flow.onnx`
+    - `lm_main.onnx`
+    - `encoder.onnx`
+    - `decoder.onnx`
+    - `text_conditioner.onnx`
+    - `vocab.json`
+    - `token_scores.json`
+    
+    **Download:** [TTS Models Release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)
+  </Card>
+</CardGroup>
+
+## Model Quantization
+
+<Info>
+The SDK automatically detects and prefers quantized (int8) models when available. For example, if both `model.onnx` and `model.int8.onnx` exist, the library chooses according to the `preferInt8` option in init.
+</Info>
+
+## Auto-Detection
+
+The library detects model types from the **files present** in each model directory. Folder and file names do not need to follow any fixed convention.
+
+To use auto-detection:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/your-model-folder' },
+  modelType: 'auto', // Auto-detect from files
+});
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Model Setup" icon="folder-open" href="/guides/model-setup">
+    Learn how to bundle, download, and manage models
+  </Card>
+  <Card title="Download Manager" icon="download" href="/guides/download-manager">
+    Download models in-app with progress tracking
+  </Card>
+  <Card title="STT API" icon="microphone" href="/api-reference/stt">
+    Speech-to-Text API reference
+  </Card>
+  <Card title="TTS API" icon="volume" href="/api-reference/tts">
+    Text-to-Speech API reference
+  </Card>
+</CardGroup>

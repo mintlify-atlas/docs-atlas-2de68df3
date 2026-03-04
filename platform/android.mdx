@@ -1,0 +1,309 @@
+---
+title: "Android Setup"
+description: "Android-specific configuration, Gradle setup, and execution providers for React Native Sherpa-ONNX"
+---
+
+## Overview
+
+The Android setup for React Native Sherpa-ONNX is handled automatically via Gradle. The library manages native dependencies, downloads prebuilt binaries, and configures execution providers without requiring manual intervention.
+
+## Requirements
+
+- **Android API 24+** (Android 7.0+)
+- **Gradle 8.7.2+**
+- **Kotlin 2.0.21+**
+- **NDK** (automatically configured)
+- **CMake 3.22.1+**
+
+## Installation
+
+No additional setup is required beyond the standard npm installation:
+
+```sh
+npm install react-native-sherpa-onnx
+```
+
+The library automatically handles:
+- Native dependency resolution via Gradle
+- Prebuilt binary downloads from Maven or GitHub releases
+- JNI library configuration
+- CMake native build setup
+
+## Gradle Configuration
+
+### SDK Versions
+
+The library uses the following default SDK versions (configurable via root project properties):
+
+```gradle
+minSdkVersion: 24
+compileSdkVersion: 36
+targetSdkVersion: 36
+```
+
+### Supported ABIs
+
+All standard Android ABIs are supported:
+- `arm64-v8a` (primary, 64-bit ARM)
+- `armeabi-v7a` (32-bit ARM)
+- `x86` (32-bit x86 emulators)
+- `x86_64` (64-bit x86 emulators)
+
+### Native Build
+
+The Android module uses **CMake** for native code compilation with:
+- **C++17** standard
+- **c++_shared** STL
+- JNI bridge for sherpa-onnx C++ API
+
+## Prebuilt Dependencies
+
+The library automatically downloads and integrates prebuilt native libraries:
+
+| Component | Default Version | Purpose |
+|-----------|----------------|----------|
+| **sherpa-onnx** | 1.12.24 | Core ONNX Runtime and speech processing |
+| **onnxruntime** | 1.24.2-qnn2.43.1.260218 | ONNX Runtime with QNN support |
+| **FFmpeg** | 8.0.1 | Audio format conversion |
+| **libarchive** | 3.8.5 | Archive extraction (.tar.bz2, etc.) |
+
+Versions are pinned in `third_party/*/ANDROID_RELEASE_TAG` files and can be overridden via environment variables:
+
+```sh
+SHERPA_ONNX_VERSION=1.12.24 ./gradlew build
+FFMPEG_VERSION=8.0.1 ./gradlew build
+LIBARCHIVE_VERSION=3.8.5 ./gradlew build
+ORT_VERSION=1.24.2-qnn2.43.1.260218 ./gradlew build
+```
+
+## Execution Providers
+
+Android supports multiple execution providers for hardware acceleration:
+
+### CPU (Default)
+
+**Always available.** No configuration required.
+
+```typescript
+import { initializeSTT } from 'react-native-sherpa-onnx/stt';
+
+await initializeSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  modelType: 'auto',
+  provider: 'cpu', // Default
+});
+```
+
+### NNAPI (Android Neural Networks API)
+
+**Hardware acceleration via GPU/DSP/NPU.** Uses the Android Neural Networks API for device-specific acceleration.
+
+```typescript
+import { getNnapiSupport } from 'react-native-sherpa-onnx';
+import { initializeSTT } from 'react-native-sherpa-onnx/stt';
+
+// Check NNAPI support
+const nnapi = await getNnapiSupport();
+if (nnapi.canInit) {
+  await initializeSTT({
+    modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+    modelType: 'auto',
+    provider: 'nnapi',
+  });
+}
+```
+
+**Support details:**
+- `providerCompiled`: Whether NNAPI is built into ONNX Runtime
+- `hasAccelerator`: Whether the device reports a dedicated accelerator (GPU/DSP/NPU)
+- `canInit`: Whether an ONNX session can be created with NNAPI
+
+<Note>
+  `hasAccelerator` can be `false` while `canInit` is `true` — NNAPI will run on CPU in this case.
+</Note>
+
+### XNNPACK (CPU-Optimized)
+
+**Optimized CPU execution.** XNNPACK provides faster CPU inference than the default CPU provider.
+
+```typescript
+import { getXnnpackSupport } from 'react-native-sherpa-onnx';
+import { initializeSTT } from 'react-native-sherpa-onnx/stt';
+
+const xnnpack = await getXnnpackSupport();
+if (xnnpack.canInit) {
+  await initializeSTT({
+    modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+    modelType: 'auto',
+    provider: 'xnnpack',
+  });
+}
+```
+
+### QNN (Qualcomm NPU)
+
+**Qualcomm Neural Processing Unit acceleration.** QNN provides the fastest inference on Qualcomm Snapdragon devices with NPU support.
+
+<Warning>
+  The Qualcomm QNN runtime libraries are **NOT included** with this SDK due to licensing restrictions. You must download and add them yourself.
+</Warning>
+
+#### Adding QNN Runtime Libraries
+
+1. **Download the Qualcomm AI Runtime:**
+   - Visit: [Qualcomm AI Runtime Community](https://softwarecenter.qualcomm.com/catalog/item/Qualcomm_AI_Runtime_Community)
+   - Accept the license agreement
+   - Download the QNN SDK
+
+2. **Copy required libraries to your app:**
+
+   Copy these files to `android/app/src/main/jniLibs/<ABI>/`:
+   - `libQnnHtp.so`
+   - `libQnnHtpV*Stub.so` (all versions: V68, V69, V73, V75, V79, V81)
+   - `libQnnHtpV*Skel.so` (all versions)
+   - `libQnnHtpPrepare.so`
+   - `libQnnCpu.so`
+   - `libQnnSystem.so`
+
+   Example structure for `arm64-v8a`:
+   ```
+   android/app/src/main/jniLibs/arm64-v8a/
+   ├── libQnnCpu.so
+   ├── libQnnHtp.so
+   ├── libQnnHtpPrepare.so
+   ├── libQnnHtpV68Skel.so
+   ├── libQnnHtpV68Stub.so
+   ├── libQnnHtpV69Skel.so
+   ├── libQnnHtpV69Stub.so
+   ├── libQnnHtpV73Skel.so
+   ├── libQnnHtpV73Stub.so
+   ├── libQnnHtpV75Skel.so
+   ├── libQnnHtpV75Stub.so
+   ├── libQnnHtpV79Skel.so
+   ├── libQnnHtpV79Stub.so
+   ├── libQnnHtpV81Skel.so
+   └── libQnnHtpV81Stub.so
+   ```
+
+3. **Check QNN support:**
+
+   ```typescript
+   import { getQnnSupport } from 'react-native-sherpa-onnx';
+   import { initializeSTT } from 'react-native-sherpa-onnx/stt';
+
+   const qnn = await getQnnSupport();
+   if (qnn.canInit) {
+     await initializeSTT({
+       modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+       modelType: 'auto',
+       provider: 'qnn',
+     });
+   } else if (qnn.providerCompiled) {
+     console.log('QNN compiled in but not available on this device');
+   }
+   ```
+
+**QNN Support Fields:**
+- `providerCompiled`: Whether QNN is built into ONNX Runtime (always `true` in this SDK)
+- `hasAccelerator`: Whether native QNN HTP backend initializes (`QnnBackend_create` succeeds)
+- `canInit`: Whether an ONNX session can be created with the QNN execution provider
+
+#### License Compliance
+
+The Qualcomm AI Stack License permits distribution of QNN runtime libraries **only as part of your application** (not standalone). When including QNN libraries:
+
+1. Do **not** remove Qualcomm copyright or proprietary notices
+2. Include the applicable Qualcomm license in your app's legal/credits section
+3. Distribute libraries only in object code form, bundled with your app
+
+See `third_party/onnxruntime_prebuilt/license/license.txt` for details.
+
+### Checking Available Providers
+
+Query all available execution providers at runtime:
+
+```typescript
+import { getAvailableProviders } from 'react-native-sherpa-onnx';
+
+const providers = await getAvailableProviders();
+// Example: ['CPU', 'NNAPI', 'XNNPACK', 'QNN']
+
+const hasQnn = providers.some(p => p.toUpperCase() === 'QNN');
+const hasNnapi = providers.some(p => p.toUpperCase() === 'NNAPI');
+```
+
+## Optional: Disabling FFmpeg or libarchive
+
+To reduce APK size or avoid conflicts with other libraries, you can disable FFmpeg or libarchive:
+
+### Disable FFmpeg
+
+Add to `android/gradle.properties`:
+
+```properties
+sherpaOnnxDisableFfmpeg=true
+```
+
+<Warning>
+  With FFmpeg disabled, `convertAudioToWav16k()` and `convertAudioToFormat()` will fail at runtime.
+</Warning>
+
+### Disable libarchive
+
+Add to `android/gradle.properties`:
+
+```properties
+sherpaOnnxDisableLibarchive=true
+```
+
+<Warning>
+  With libarchive disabled, `extractTarBz2()` and `cancelExtractTarBz2()` will fail at runtime.
+</Warning>
+
+## ProGuard / R8
+
+The library includes ProGuard rules (`proguard-rules.pro`) to preserve JNI-called classes and methods. No additional ProGuard configuration is required.
+
+## Troubleshooting
+
+### Native library not found
+
+If you see errors about missing `.so` files:
+
+1. **Clean and rebuild:**
+   ```sh
+   cd android
+   ./gradlew clean
+   cd ..
+   yarn android
+   ```
+
+2. **Check jniLibs directory:** Ensure `android/src/main/jniLibs/<ABI>/` contains:
+   - `libsherpa-onnx-jni.so`
+   - `libonnxruntime.so`
+   - (Optional) QNN libraries if using QNN provider
+
+### CMake configuration failed
+
+Ensure you have CMake 3.22.1+ installed via Android SDK Manager:
+
+```sh
+sdkmanager --install "cmake;3.22.1"
+```
+
+### QNN not working
+
+If `getQnnSupport().canInit` returns `false`:
+
+1. Verify QNN runtime libraries are in `jniLibs/<ABI>/`
+2. Ensure your device has a Qualcomm Snapdragon SoC with NPU support
+3. Check logcat for QNN initialization errors:
+   ```sh
+   adb logcat | grep -i qnn
+   ```
+
+## Related Documentation
+
+- [Play Asset Delivery (PAD)](/platform/play-asset-delivery) - For large model distribution
+- [Execution Providers](/configuration/execution-providers) - Detailed provider documentation
+- [Model Setup](/models/setup) - Asset bundling and model paths

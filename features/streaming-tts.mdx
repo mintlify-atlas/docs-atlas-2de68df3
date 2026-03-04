@@ -1,0 +1,448 @@
+---
+title: 'Streaming Text-to-Speech'
+description: 'Low-latency incremental speech generation with real-time playback'
+icon: 'tower-broadcast'
+---
+
+## Overview
+
+Streaming TTS generates speech incrementally, delivering audio chunks as they are produced. This enables lower time-to-first-byte and immediate playback while synthesis continues.
+
+## Quick Start
+
+```typescript
+import { createStreamingTTS } from 'react-native-sherpa-onnx/tts';
+
+// 1) Create streaming TTS engine
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+// 2) Generate speech with streaming callbacks
+const controller = await tts.generateSpeechStream(
+  'Hello, this is streaming TTS.',
+  undefined,
+  {
+    onChunk: (chunk) => {
+      // chunk.samples: float[] in [-1, 1]
+      // chunk.sampleRate: number
+      // chunk.progress: 0..1
+      // chunk.isFinal: boolean
+      playAudio(chunk.samples, chunk.sampleRate);
+    },
+    onEnd: () => console.log('Generation complete'),
+    onError: (err) => console.error('Error:', err.message),
+  }
+);
+
+// 3) Cleanup
+await tts.destroy();
+```
+
+## Built-in PCM Player
+
+Use the native PCM player for minimal latency:
+
+```typescript
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1); // mono
+
+const controller = await tts.generateSpeechStream(
+  'Hello, world!',
+  undefined,
+  {
+    onChunk: (chunk) => {
+      if (chunk.samples.length > 0) {
+        tts.writePcmChunk(chunk.samples);
+      }
+    },
+    onEnd: () => tts.stopPcmPlayer(),
+    onError: () => tts.stopPcmPlayer(),
+  }
+);
+```
+
+## Engine Creation
+
+Create a streaming TTS engine (same as batch TTS):
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'auto',  // or explicit: 'vits', 'matcha', etc.
+  
+  // Performance
+  numThreads: 4,
+  provider: 'cpu',
+  
+  // Model options
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      noiseScaleW: 0.8,
+      lengthScale: 1.0,
+    },
+  },
+  
+  // Config-level options
+  maxNumSentences: 1,    // Sentences per callback
+  silenceScale: 0.2,
+});
+```
+
+## Generate Speech Stream
+
+```typescript
+const controller = await tts.generateSpeechStream(
+  text,
+  options,  // TtsGenerationOptions or undefined
+  handlers  // TtsStreamHandlers
+);
+```
+
+### Generation Options
+
+Same as batch TTS:
+
+```typescript
+const controller = await tts.generateSpeechStream(
+  'Hello, world!',
+  {
+    sid: 0,        // Speaker ID
+    speed: 1.2,    // Speed multiplier
+    silenceScale: 0.3,
+  },
+  handlers
+);
+```
+
+### Stream Handlers
+
+```typescript
+interface TtsStreamHandlers {
+  onChunk?: (chunk: TtsStreamChunk) => void;
+  onEnd?: (event: TtsStreamEnd) => void;
+  onError?: (event: TtsStreamError) => void;
+}
+```
+
+#### Chunk Event
+
+```typescript
+interface TtsStreamChunk {
+  instanceId?: string;
+  requestId?: string;
+  samples: number[];    // Float PCM in [-1, 1]
+  sampleRate: number;   // Sample rate in Hz
+  progress: number;     // 0..1
+  isFinal: boolean;     // True for last chunk
+}
+```
+
+#### End Event
+
+```typescript
+interface TtsStreamEnd {
+  instanceId?: string;
+  requestId?: string;
+  cancelled: boolean;   // True if cancelled
+}
+```
+
+#### Error Event
+
+```typescript
+interface TtsStreamError {
+  instanceId?: string;
+  requestId?: string;
+  message: string;
+}
+```
+
+## Stream Controller
+
+The controller manages the streaming generation:
+
+```typescript
+interface TtsStreamController {
+  cancel: () => Promise<void>;    // Stop generation
+  unsubscribe: () => void;         // Remove listeners
+}
+```
+
+### Cancel Generation
+
+```typescript
+const controller = await tts.generateSpeechStream(text, undefined, handlers);
+
+// User taps "Stop"
+await controller.cancel();
+```
+
+### Unsubscribe Listeners
+
+```typescript
+// Automatically called after onEnd/onError
+// Manually call if discarding controller early
+controller.unsubscribe();
+```
+
+## PCM Player API
+
+### Start Player
+
+```typescript
+const sampleRate = await tts.getSampleRate();
+const numChannels = 1; // mono
+
+await tts.startPcmPlayer(sampleRate, numChannels);
+```
+
+### Write Chunks
+
+```typescript
+onChunk: (chunk) => {
+  // Samples must be in [-1, 1]
+  await tts.writePcmChunk(chunk.samples);
+}
+```
+
+### Stop Player
+
+```typescript
+await tts.stopPcmPlayer();
+```
+
+## Complete Example
+
+```typescript
+import { createStreamingTTS } from 'react-native-sherpa-onnx/tts';
+
+async function streamSpeech(text: string) {
+  const tts = await createStreamingTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper-en_US' },
+    modelType: 'vits',
+    numThreads: 4,
+  });
+  
+  try {
+    const sampleRate = await tts.getSampleRate();
+    await tts.startPcmPlayer(sampleRate, 1);
+    
+    const controller = await tts.generateSpeechStream(
+      text,
+      { speed: 1.0 },
+      {
+        onChunk: (chunk) => {
+          console.log(`Progress: ${(chunk.progress * 100).toFixed(0)}%`);
+          if (chunk.samples.length > 0) {
+            tts.writePcmChunk(chunk.samples);
+          }
+        },
+        onEnd: (e) => {
+          tts.stopPcmPlayer();
+          if (e.cancelled) {
+            console.log('Generation cancelled');
+          } else {
+            console.log('Generation complete');
+          }
+        },
+        onError: (err) => {
+          tts.stopPcmPlayer();
+          console.error('TTS error:', err.message);
+        },
+      }
+    );
+    
+    // Return controller for potential cancellation
+    return controller;
+  } finally {
+    // Cleanup after generation completes
+    await tts.destroy();
+  }
+}
+
+// Usage
+const controller = await streamSpeech('Hello, world!');
+
+// Cancel if needed
+// await controller.cancel();
+```
+
+## Recording Streamed Audio
+
+Accumulate chunks to save after generation:
+
+```typescript
+const chunks: number[] = [];
+let sampleRate = 0;
+
+const controller = await tts.generateSpeechStream(text, undefined, {
+  onChunk: (chunk) => {
+    sampleRate = chunk.sampleRate;
+    chunks.push(...chunk.samples);
+    
+    // Also play live
+    tts.writePcmChunk(chunk.samples);
+  },
+  onEnd: async () => {
+    tts.stopPcmPlayer();
+    
+    // Save accumulated audio
+    if (chunks.length > 0) {
+      await saveAudioToFile(
+        { samples: chunks, sampleRate },
+        '/path/to/output.wav'
+      );
+    }
+  },
+  onError: () => tts.stopPcmPlayer(),
+});
+```
+
+## Voice Cloning (Pocket TTS)
+
+Stream with voice cloning for Kotlin-engine models:
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/pocket-tts' },
+  modelType: 'pocket',
+});
+
+const controller = await tts.generateSpeechStream(
+  'Target text in cloned voice',
+  {
+    referenceAudio: { samples: refSamples, sampleRate: 22050 },
+    referenceText: 'Reference transcript',
+    numSteps: 20,
+    extra: { temperature: '0.7' },
+  },
+  handlers
+);
+```
+
+**Note:** Streaming with reference audio is **not supported for ZipVoice**. Use batch `generateSpeech` for ZipVoice voice cloning.
+
+## Multiple Concurrent Requests
+
+Only one stream per engine is allowed at a time. For concurrent requests:
+
+### Option A: Sequential
+
+Wait for `onEnd` before starting the next:
+
+```typescript
+await tts.generateSpeechStream(text1, undefined, handlers1);
+// Wait for onEnd...
+await tts.generateSpeechStream(text2, undefined, handlers2);
+```
+
+### Option B: Multiple Engines
+
+Create separate engines:
+
+```typescript
+const tts1 = await createStreamingTTS(config);
+const tts2 = await createStreamingTTS(config);
+
+await tts1.generateSpeechStream(text1, undefined, handlers1);
+await tts2.generateSpeechStream(text2, undefined, handlers2);
+
+await tts1.destroy();
+await tts2.destroy();
+```
+
+## Performance Tips
+
+### Threading
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  numThreads: 4,  // Use multiple cores
+});
+```
+
+### Chunk Size
+
+Control via `maxNumSentences`:
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  maxNumSentences: 2,  // Larger chunks, less frequent callbacks
+});
+```
+
+### Memory
+
+- Avoid accumulating all chunks in JS for very long texts
+- Use native player to minimize JS memory usage
+- Save incrementally to files if needed
+
+## Error Handling
+
+```typescript
+const controller = await tts.generateSpeechStream(
+  text,
+  undefined,
+  {
+    onChunk: (chunk) => playAudio(chunk.samples),
+    onEnd: (e) => {
+      if (!e.cancelled) {
+        console.log('Success');
+      }
+    },
+    onError: (e) => {
+      console.error('TTS streaming error:', e.message);
+      // Cleanup, stop playback, show error UI
+    },
+  }
+);
+```
+
+## Cleanup
+
+Always clean up resources:
+
+```typescript
+try {
+  const tts = await createStreamingTTS({ /* ... */ });
+  
+  // Use streaming TTS
+  const controller = await tts.generateSpeechStream(text, undefined, handlers);
+  
+  // Wait for completion or cancel
+  // ...
+} finally {
+  await tts.destroy();
+}
+```
+
+Listeners are **automatically** removed after `onEnd` or `onError`. Call `controller.unsubscribe()` manually only if discarding the controller before completion.
+
+## Supported Models
+
+All TTS model types support streaming:
+
+- VITS (Piper)
+- Matcha
+- Kokoro
+- Kitten
+- Pocket
+- ZipVoice (batch `generateSpeech` only for voice cloning)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch TTS" icon="volume-high" href="/features/text-to-speech">
+    Generate complete audio buffers
+  </Card>
+  <Card title="Model Setup" icon="download" href="/setup/models">
+    Download and configure TTS models
+  </Card>
+</CardGroup>

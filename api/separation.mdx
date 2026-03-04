@@ -1,0 +1,457 @@
+---
+title: 'Source Separation'
+description: 'Separate mixed audio into individual sources'
+icon: 'layer-group'
+---
+
+<Warning>
+  **Coming in v0.6.0** - This feature is planned for a future release. The API interface is subject to change.
+</Warning>
+
+## Overview
+
+Source Separation (also called audio source separation or blind source separation) extracts individual audio sources from a mixed recording. This is useful for:
+
+- Separating vocals from music
+- Isolating speech from background music
+- Extracting individual instruments from a mix
+- Removing background sounds from recordings
+- Audio post-production and remixing
+- Enhanced transcription in noisy environments
+
+## Installation
+
+Source Separation will be included in the main package:
+
+```bash
+npm install react-native-sherpa-onnx
+```
+
+## Basic Usage
+
+```typescript
+import { initializeSeparation, separateSources } from 'react-native-sherpa-onnx/separation';
+
+// Initialize separation with model
+await initializeSeparation({
+  modelPath: {
+    type: 'auto',
+    path: 'models/separation-model'
+  }
+});
+
+// Separate mixed audio
+const sources = await separateSources('path/to/mixed-audio.wav');
+
+console.log('Separated sources:', sources);
+// [
+//   { sourceId: 'vocals', outputPath: '/tmp/vocals.wav' },
+//   { sourceId: 'music', outputPath: '/tmp/music.wav' }
+// ]
+```
+
+## API Reference
+
+### initializeSeparation()
+
+Initialize the Source Separation model.
+
+```typescript
+await initializeSeparation(options: SeparationInitializeOptions): Promise<void>
+```
+
+#### Parameters
+
+<ParamField path="options" type="SeparationInitializeOptions" required>
+  Configuration options for separation initialization
+
+  <Expandable title="properties">
+    <ParamField path="modelPath" type="ModelPathConfig" required>
+      Path configuration for the separation model
+      
+      <Expandable title="properties">
+        <ParamField path="type" type="'auto' | 'file'" required>
+          Type of model path resolution
+        </ParamField>
+        
+        <ParamField path="path" type="string" required>
+          Path to the model directory
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Returns
+
+Promise that resolves when separation is initialized.
+
+#### Example
+
+```typescript
+await initializeSeparation({
+  modelPath: {
+    type: 'auto',
+    path: 'models/demucs-separation'
+  }
+});
+```
+
+### separateSources()
+
+Separate audio sources from a mixed audio file.
+
+```typescript
+await separateSources(filePath: string): Promise<SeparatedSource[]>
+```
+
+#### Parameters
+
+<ParamField path="filePath" type="string" required>
+  Path to the mixed audio file to separate
+</ParamField>
+
+#### Returns
+
+Promise that resolves to an array of separated audio sources.
+
+<ResponseField name="SeparatedSource[]" type="array">
+  <Expandable title="SeparatedSource properties">
+    <ResponseField name="sourceId" type="string" required>
+      Identifier for the separated source (e.g., "vocals", "music", "speech")
+    </ResponseField>
+    
+    <ResponseField name="outputPath" type="string" required>
+      Path to the separated audio file
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Example
+
+```typescript
+const sources = await separateSources('/path/to/recording-with-music.wav');
+
+for (const source of sources) {
+  console.log(`${source.sourceId}: ${source.outputPath}`);
+  
+  // Process each source separately
+  if (source.sourceId === 'speech') {
+    await transcribeRecognizer({ filePath: source.outputPath });
+  }
+}
+```
+
+### unloadSeparation()
+
+Release separation model resources.
+
+```typescript
+await unloadSeparation(): Promise<void>
+```
+
+#### Returns
+
+Promise that resolves when resources are released.
+
+#### Example
+
+```typescript
+// When done with separation
+await unloadSeparation();
+```
+
+## Types
+
+### SeparationInitializeOptions
+
+```typescript
+interface SeparationInitializeOptions {
+  modelPath: ModelPathConfig;
+  // Additional options will be added in v0.6.0
+}
+```
+
+### SeparatedSource
+
+```typescript
+interface SeparatedSource {
+  sourceId: string;    // Source identifier (e.g., "vocals", "music")
+  outputPath: string;  // Path to separated audio file
+  // Additional fields will be added in v0.6.0
+}
+```
+
+### ModelPathConfig
+
+```typescript
+interface ModelPathConfig {
+  type: 'auto' | 'file';
+  path: string;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose the right separation model">
+    Different models specialize in different separation tasks:
+    - **Speech/Music separation**: Separates speech from background music
+    - **Vocal isolation**: Extracts vocals from music tracks
+    - **Multi-instrument**: Separates individual instruments (drums, bass, etc.)
+    - **General-purpose**: Attempts to separate any audio sources
+    
+    Select the model that matches your separation needs for best results.
+  </Accordion>
+
+  <Accordion title="Understand quality limitations">
+    Source separation is an approximation:
+    - Perfect separation is impossible - expect some artifacts
+    - Quality depends on source overlap in frequency/time
+    - Similar-sounding sources are harder to separate
+    - Processing may introduce "phasey" or "underwater" sounds
+    
+    Use separation strategically when benefits outweigh artifacts.
+  </Accordion>
+
+  <Accordion title="Use for specific workflows">
+    Source separation works best in targeted workflows:
+    - **Speech extraction**: Isolate speech before transcription
+    - **Noise removal**: Separate and discard unwanted sounds
+    - **Karaoke creation**: Remove vocals from music
+    - **Stem creation**: Extract individual instruments
+    
+    Define clear goals for separation to evaluate success.
+  </Accordion>
+</AccordionGroup>
+
+## Common Use Cases
+
+### Speech Extraction for Transcription
+
+```typescript
+import { initializeSeparation, separateSources } from 'react-native-sherpa-onnx/separation';
+import { transcribeRecognizer } from 'react-native-sherpa-onnx';
+
+async function transcribeWithMusic(audioPath: string) {
+  // Initialize separation
+  await initializeSeparation({
+    modelPath: { type: 'auto', path: 'models/speech-music-separation' }
+  });
+  
+  // Separate speech from music
+  console.log('Separating audio sources...');
+  const sources = await separateSources(audioPath);
+  
+  // Find speech source
+  const speechSource = sources.find(s => s.sourceId === 'speech');
+  
+  if (speechSource) {
+    // Transcribe isolated speech
+    const result = await transcribeRecognizer({ 
+      filePath: speechSource.outputPath 
+    });
+    return result.text;
+  } else {
+    throw new Error('No speech source found in audio');
+  }
+}
+```
+
+### Vocal Removal (Karaoke)
+
+```typescript
+import { initializeSeparation, separateSources } from 'react-native-sherpa-onnx/separation';
+
+async function createKaraoke(musicPath: string, outputPath: string) {
+  await initializeSeparation({
+    modelPath: { type: 'auto', path: 'models/vocal-separation' }
+  });
+  
+  // Separate vocals and instrumentals
+  const sources = await separateSources(musicPath);
+  
+  // Get instrumental track (music without vocals)
+  const instrumental = sources.find(s => s.sourceId === 'music');
+  
+  if (instrumental) {
+    // Copy instrumental to desired output
+    await copyFile(instrumental.outputPath, outputPath);
+    console.log('Karaoke track created:', outputPath);
+    return outputPath;
+  }
+}
+```
+
+### Multi-Source Analysis
+
+```typescript
+import { separateSources } from 'react-native-sherpa-onnx/separation';
+
+async function analyzeAudioComposition(audioPath: string) {
+  const sources = await separateSources(audioPath);
+  
+  // Analyze each separated source
+  const analysis = await Promise.all(
+    sources.map(async source => {
+      const stats = await analyzeAudioFile(source.outputPath);
+      return {
+        sourceId: source.sourceId,
+        duration: stats.duration,
+        averageVolume: stats.averageVolume,
+        spectralCentroid: stats.spectralCentroid
+      };
+    })
+  );
+  
+  console.log('Audio composition:', analysis);
+  return analysis;
+}
+```
+
+### Batch Source Separation
+
+```typescript
+import { separateSources } from 'react-native-sherpa-onnx/separation';
+import { readdir } from 'fs/promises';
+import { join } from 'path';
+
+async function separateBatch(inputDir: string, outputDir: string) {
+  const files = await readdir(inputDir);
+  const audioFiles = files.filter(f => f.endsWith('.wav'));
+  
+  console.log(`Separating ${audioFiles.length} files...`);
+  
+  for (const file of audioFiles) {
+    console.log(`Processing: ${file}`);
+    const inputPath = join(inputDir, file);
+    const sources = await separateSources(inputPath);
+    
+    // Save each source to output directory
+    for (const source of sources) {
+      const outputFilename = `${file.replace('.wav', '')}_${source.sourceId}.wav`;
+      const outputPath = join(outputDir, outputFilename);
+      await copyFile(source.outputPath, outputPath);
+    }
+  }
+  
+  console.log('Batch separation complete');
+}
+```
+
+## Error Handling
+
+```typescript
+try {
+  await initializeSeparation({
+    modelPath: {
+      type: 'auto',
+      path: 'models/separation'
+    }
+  });
+  
+  const sources = await separateSources('mixed-audio.wav');
+  
+  if (sources.length === 0) {
+    console.log('No sources could be separated from audio');
+  } else {
+    console.log(`Successfully separated ${sources.length} source(s)`);
+    sources.forEach(s => console.log(`  - ${s.sourceId}: ${s.outputPath}`));
+  }
+  
+} catch (error) {
+  if (error.message.includes('model not found')) {
+    console.error('Separation model not found. Please download the model.');
+  } else if (error.message.includes('unsupported format')) {
+    console.error('Audio format not supported. Convert to WAV format.');
+  } else {
+    console.error('Separation error:', error);
+  }
+} finally {
+  await unloadSeparation();
+}
+```
+
+## Performance Considerations
+
+<Note>
+  Source separation is very computationally intensive:
+  - Processing time: 0.1x - 2.0x real-time depending on model
+  - Memory usage: High, scales with audio length and number of sources
+  - GPU acceleration strongly recommended for practical use
+  - Consider processing in chunks for very long files
+  - Output files multiply storage requirements (one per source)
+</Note>
+
+## Quality Factors
+
+Separation quality depends on several factors:
+
+<AccordionGroup>
+  <Accordion title="Source independence">
+    - **Better**: Speech and music (different spectral characteristics)
+    - **Harder**: Two similar instruments (similar frequency ranges)
+    - **Hardest**: Overlapping speakers (same frequency, same time)
+  </Accordion>
+  
+  <Accordion title="Audio quality">
+    - Clean, high-quality input produces better separation
+    - Compressed audio (MP3, AAC) may limit separation quality
+    - Sample rate affects separation resolution
+  </Accordion>
+  
+  <Accordion title="Model selection">
+    - Specialized models (speech/music) outperform general models
+    - Newer models generally have better quality
+    - Larger models are slower but more accurate
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+<Warning>
+  Source separation has inherent limitations:
+  - Cannot perfectly separate overlapping sources
+  - May introduce artifacts (phase issues, frequency smearing)
+  - Requires significant computational resources
+  - Quality degrades with heavily mixed or compressed audio
+  - Cannot separate sources that are perceptually similar
+  - Works best with stereo or multi-channel audio
+</Warning>
+
+## Technical Details
+
+### Supported Audio Formats
+
+Separation will support common audio formats:
+- WAV (PCM, 16-bit or 24-bit, 44.1kHz or 48kHz recommended)
+- Stereo input generally produces better results than mono
+- Additional formats may be added in v0.6.0
+
+### Processing Pipeline
+
+1. **Load audio**: Read mixed audio file
+2. **Preprocess**: Resample and normalize
+3. **Separation**: Apply deep learning source separation
+4. **Postprocess**: Normalize and balance output levels
+5. **Save sources**: Write each separated source to individual files
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Speech Enhancement" icon="sparkles" href="/api/enhancement">
+    Remove noise without full separation
+  </Card>
+  
+  <Card title="Speech Recognition" icon="microphone" href="/api/stt">
+    Transcribe separated speech
+  </Card>
+  
+  <Card title="Speaker Diarization" icon="users" href="/api/diarization">
+    Identify speakers after separation
+  </Card>
+  
+  <Card title="Voice Activity Detection" icon="waveform" href="/api/vad">
+    Detect speech in separated audio
+  </Card>
+</CardGroup>

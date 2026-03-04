@@ -1,0 +1,247 @@
+---
+title: 'Voice Activity Detection'
+description: 'Detect speech segments in audio files'
+icon: 'waveform'
+---
+
+<Warning>
+  **Coming Soon** - This feature is planned but not yet implemented. The API interface is subject to change.
+</Warning>
+
+## Overview
+
+Voice Activity Detection (VAD) identifies segments of audio that contain speech, filtering out silence and non-speech sounds. This is useful for:
+
+- Preprocessing audio before transcription
+- Reducing processing time by skipping silent segments
+- Improving accuracy by focusing on speech portions
+- Building voice-triggered applications
+
+## Installation
+
+VAD will be included in the main package:
+
+```bash
+npm install react-native-sherpa-onnx
+```
+
+## Basic Usage
+
+```typescript
+import { initializeVAD, detectVoiceActivity } from 'react-native-sherpa-onnx/vad';
+
+// Initialize VAD with model
+await initializeVAD({
+  modelPath: {
+    type: 'auto',
+    path: 'models/vad-model'
+  }
+});
+
+// Detect voice segments
+const segments = await detectVoiceActivity('path/to/audio.wav');
+
+console.log('Voice segments:', segments);
+// [{ start: 0.5, end: 3.2 }, { start: 4.1, end: 7.8 }]
+```
+
+## API Reference
+
+### initializeVAD()
+
+Initialize the Voice Activity Detection model.
+
+```typescript
+await initializeVAD(options: VADInitializeOptions): Promise<void>
+```
+
+#### Parameters
+
+<ParamField path="options" type="VADInitializeOptions" required>
+  Configuration options for VAD initialization
+
+  <Expandable title="properties">
+    <ParamField path="modelPath" type="ModelPathConfig" required>
+      Path configuration for the VAD model
+      
+      <Expandable title="properties">
+        <ParamField path="type" type="'auto' | 'file'" required>
+          Type of model path resolution
+        </ParamField>
+        
+        <ParamField path="path" type="string" required>
+          Path to the model directory
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Returns
+
+Promise that resolves when VAD is initialized.
+
+#### Example
+
+```typescript
+await initializeVAD({
+  modelPath: {
+    type: 'auto',
+    path: 'models/silero-vad'
+  }
+});
+```
+
+### detectVoiceActivity()
+
+Detect voice activity segments in an audio file.
+
+```typescript
+await detectVoiceActivity(filePath: string): Promise<VoiceSegment[]>
+```
+
+#### Parameters
+
+<ParamField path="filePath" type="string" required>
+  Path to the audio file to analyze
+</ParamField>
+
+#### Returns
+
+Promise that resolves to an array of voice segments.
+
+<ResponseField name="VoiceSegment[]" type="array">
+  <Expandable title="VoiceSegment properties">
+    <ResponseField name="start" type="number" required>
+      Start time of the voice segment in seconds
+    </ResponseField>
+    
+    <ResponseField name="end" type="number" required>
+      End time of the voice segment in seconds
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+#### Example
+
+```typescript
+const segments = await detectVoiceActivity('/path/to/recording.wav');
+
+segments.forEach(segment => {
+  console.log(`Speech from ${segment.start}s to ${segment.end}s`);
+});
+```
+
+### unloadVAD()
+
+Release VAD model resources.
+
+```typescript
+await unloadVAD(): Promise<void>
+```
+
+#### Returns
+
+Promise that resolves when resources are released.
+
+#### Example
+
+```typescript
+// When done with VAD
+await unloadVAD();
+```
+
+## Types
+
+### VADInitializeOptions
+
+```typescript
+interface VADInitializeOptions {
+  modelPath: ModelPathConfig;
+  // Additional options will be added in future versions
+}
+```
+
+### VoiceSegment
+
+```typescript
+interface VoiceSegment {
+  start: number;  // Start time in seconds
+  end: number;    // End time in seconds
+  // Additional fields will be added in future versions
+}
+```
+
+### ModelPathConfig
+
+```typescript
+interface ModelPathConfig {
+  type: 'auto' | 'file';
+  path: string;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose appropriate VAD models">
+    Different VAD models have different characteristics:
+    - **Silero VAD**: Fast, lightweight, good for real-time applications
+    - **WebRTC VAD**: Classic algorithm, very fast but less accurate
+    - **Deep learning models**: More accurate but slower
+    
+    Choose based on your accuracy and performance requirements.
+  </Accordion>
+
+  <Accordion title="Adjust sensitivity for your use case">
+    VAD sensitivity affects the trade-off between:
+    - **High sensitivity**: Catches more speech but may include noise
+    - **Low sensitivity**: More conservative, may miss quiet speech
+    
+    Tune based on your audio quality and application needs.
+  </Accordion>
+
+  <Accordion title="Preprocess audio for better results">
+    VAD works best with:
+    - Clean audio without heavy background noise
+    - Consistent volume levels
+    - Appropriate sample rates (typically 16kHz)
+    
+    Consider using speech enhancement before VAD if needed.
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+```typescript
+try {
+  await initializeVAD({
+    modelPath: {
+      type: 'auto',
+      path: 'models/vad'
+    }
+  });
+  
+  const segments = await detectVoiceActivity('audio.wav');
+  
+  if (segments.length === 0) {
+    console.log('No speech detected in audio');
+  }
+} catch (error) {
+  console.error('VAD error:', error);
+} finally {
+  await unloadVAD();
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Speech Enhancement" icon="sparkles" href="/api/enhancement">
+    Improve audio quality before VAD
+  </Card>
+  
+  <Card title="Speech Recognition" icon="microphone" href="/api/stt">
+    Transcribe detected speech segments
+  </Card>
+</CardGroup>

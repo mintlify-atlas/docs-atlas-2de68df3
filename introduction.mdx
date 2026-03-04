@@ -1,0 +1,153 @@
+---
+title: Introduction
+description: Offline speech processing with Sherpa-ONNX for React Native - STT, TTS, streaming recognition, and voice synthesis
+---
+
+# React Native Sherpa-ONNX
+
+Offline speech-to-text, text-to-speech, and streaming speech processing for React Native applications. No internet required.
+
+<img src="/images/banner.png" alt="Sherpa-ONNX Banner" />
+
+## What is Sherpa-ONNX?
+
+Sherpa-ONNX is a powerful offline speech processing SDK that brings advanced speech recognition and synthesis capabilities to your React Native apps. Built on the [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) library, it provides:
+
+- **Complete offline operation** - No API calls, no internet dependency, no usage limits
+- **Real-time streaming** - Live transcription from microphone with partial results
+- **High accuracy** - Support for state-of-the-art models like Whisper, Paraformer, and more
+- **Cross-platform** - Full support for iOS and Android with optimized native performance
+- **Production ready** - Battle-tested with CI/CD automation and comprehensive TypeScript types
+
+<CardGroup cols={2}>
+  <Card title="Speech-to-Text" icon="microphone" href="/api/stt">
+    Transcribe audio files or live microphone input with multiple model types
+  </Card>
+  <Card title="Text-to-Speech" icon="volume-high" href="/api/tts">
+    Generate natural speech from text with multi-language and multi-speaker support
+  </Card>
+  <Card title="Streaming Recognition" icon="waveform" href="/api/streaming-stt">
+    Real-time speech recognition with partial results and endpoint detection
+  </Card>
+  <Card title="Streaming TTS" icon="tower-broadcast" href="/api/streaming-tts">
+    Incremental speech generation for low latency playback
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="No Internet Required" icon="wifi-slash">
+    All processing happens on-device. Perfect for privacy-sensitive apps and offline scenarios.
+  </Card>
+  <Card title="Hardware Acceleration" icon="microchip">
+    Supports NNAPI, XNNPACK, Core ML, and QNN for optimal performance on mobile devices.
+  </Card>
+  <Card title="Multiple Model Types" icon="brain">
+    Whisper, Paraformer, Zipformer, VITS, Matcha, Kokoro, and more - choose the best model for your use case.
+  </Card>
+  <Card title="TypeScript Native" icon="code">
+    Full type definitions and modern API design with comprehensive examples.
+  </Card>
+  <Card title="Flexible Model Loading" icon="folder-open">
+    Load models from app assets, filesystem, or Play Asset Delivery (PAD) on Android.
+  </Card>
+  <Card title="Production Ready" icon="shield-check">
+    Automated CI/CD, thorough testing, and used in production applications.
+  </Card>
+</CardGroup>
+
+## Platform Support
+
+| Platform | Status | Minimum Version |
+|----------|--------|----------------|
+| Android  | ✅ Production Ready | API 24 (Android 7.0) |
+| iOS      | ✅ Production Ready | iOS 13.0+ |
+
+## Supported Models
+
+### Speech-to-Text (STT)
+
+Choose from multiple model architectures optimized for different use cases:
+
+- **Whisper** - OpenAI's multilingual model (99 languages)
+- **Paraformer** - Fast, accurate Chinese and English recognition
+- **Zipformer/Transducer** - Streaming-capable, low latency
+- **NeMo CTC** - NVIDIA's high-accuracy models
+- **SenseVoice** - Multi-language with emotion detection
+- **WeNet CTC** - Production-grade CTC models
+- **FunASR Nano** - Compact models for resource-constrained devices
+- **Tone CTC** - Specialized for tonal languages
+
+[Browse all STT models →](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html)
+
+### Text-to-Speech (TTS)
+
+Generate natural, expressive speech:
+
+- **VITS** - Fast, high-quality synthesis (includes Piper, Coqui, MeloTTS variants)
+- **Matcha** - High-quality acoustic modeling with vocoder
+- **Kokoro** - Multi-speaker, multi-language TTS
+- **KittenTTS** - Lightweight, efficient multi-speaker synthesis
+- **Zipvoice** - Voice cloning capable
+- **Pocket** - Flow-matching TTS for natural prosody
+
+[Browse all TTS models →](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Voice Assistants">
+    Build offline voice assistants with real-time speech recognition and natural response generation. No API costs, complete privacy.
+  </Accordion>
+  <Accordion title="Accessibility Apps">
+    Create text-to-speech readers, voice input for text fields, or audio transcription tools that work anywhere.
+  </Accordion>
+  <Accordion title="Medical & Healthcare">
+    HIPAA-compliant medical transcription and voice note-taking with complete on-device processing.
+  </Accordion>
+  <Accordion title="Education & Language Learning">
+    Speech recognition for pronunciation practice, audio lessons, and multilingual content.
+  </Accordion>
+  <Accordion title="Media & Content Creation">
+    Automated subtitling, voiceovers, podcast transcription, and video editing tools.
+  </Accordion>
+  <Accordion title="IoT & Embedded">
+    Voice control for smart devices in environments with limited or no internet connectivity.
+  </Accordion>
+</AccordionGroup>
+
+## Requirements
+
+- React Native >= 0.70
+- Android API 24+ (Android 7.0+)
+- iOS 13.0+
+- `@dr.pogodin/react-native-fs` peer dependency
+
+## Quick Links
+
+<CardGroup cols={3}>
+  <Card title="Get Started" icon="rocket" href="/installation">
+    Install and configure the SDK
+  </Card>
+  <Card title="Quick Start Guide" icon="book-open" href="/quickstart">
+    Build your first speech app
+  </Card>
+  <Card title="Example App" icon="mobile" href="https://github.com/XDcobra/react-native-sherpa-onnx/tree/main/example">
+    Explore the full example application
+  </Card>
+</CardGroup>
+
+<Note>
+  **New to speech processing?** Start with the [Quick Start Guide](/quickstart) to transcribe your first audio file in under 5 minutes.
+</Note>
+
+## Community & Support
+
+- **GitHub Issues**: [Report bugs and request features](https://github.com/XDcobra/react-native-sherpa-onnx/issues)
+- **Example Apps**: [Audio-to-text demo](https://github.com/XDcobra/react-native-sherpa-onnx/tree/main/example) and [Video-to-text comparison](https://github.com/XDcobra/mobile-videototext-comparison)
+- **Sherpa-ONNX Docs**: [Upstream documentation](https://k2-fsa.github.io/sherpa/onnx/)
+
+## License
+
+MIT License - free for commercial and personal use.
